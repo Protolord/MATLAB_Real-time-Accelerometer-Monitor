@@ -22,7 +22,7 @@ function varargout = RealTime_Accelerometer_Monitor(varargin)
 
 % Edit the above text to modify the response to help RealTime_Accelerometer_Monitor
 
-% Last Modified by GUIDE v2.5 14-Feb-2016 12:17:01
+% Last Modified by GUIDE v2.5 14-Feb-2016 23:35:49
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -64,14 +64,21 @@ guidata(hObject, handles);
 % UIWAIT makes RealTime_Accelerometer_Monitor wait for user response (see UIRESUME)
 % uiwait(handles.figure1);
 
+%Timer Initialization
 t = timer;
 t.Period = 0.02;
 t.TimerFcn = {@MainUpdate,hObject,handles};
 t.ExecutionMode = 'fixedRate';
-%GUI Axes properties
+%GUI Handles Initial Properties
 set(handles.xPlot_axes,'xtick',[],'ytick',[]);
 set(handles.yPlot_axes,'xtick',[],'ytick',[]);
 set(handles.zPlot_axes,'xtick',[],'ytick',[]);
+set(handles.BTNDisconnect, 'Visible', 'off');
+set(handles.BTNResumePlot, 'Visible', 'off');
+set(handles.BTNPausePlot, 'Visible', 'off');
+set(handles.BTNTimePlot, 'Visible', 'off');
+set(handles.BTNFreqPlot, 'Visible', 'off');
+%Initial plotting properties
 plotType = 0;
 pausePlot = 0;
 
@@ -166,16 +173,15 @@ end
 currentMinute = minute(now);
 if (~mod(currentMinute, 2) && currentMinute > lastLogMinute) %Log data every 2 minutes
     lastLogMinute = currentMinute;
+    %Create a file and store Data(lastLog:index)
     logFile = fopen(strcat('Log\', datestr(time(lastLog), 'dd-mmm-yyyy HH.MM.SS'), '.log'), 'w+');
-    fprintf(logFile, 'Real-time Accelerometer Monitor: %s\r\n', datestr(now, 'dd-mmm-yyyy'));
-    fprintf(logFile, '***********Data on x-axis************\r\n');
-    fprintf(logFile, 'Time\t\t\tMagnitude\r\n');
+    fprintf(logFile, 'Accelerometer Sensor Data:\r\n%s\r\n', datestr(now, 'dd-mmm-yyyy'));
+    fprintf(logFile, 'Time\t\tX-Axis\t\tY-Axis\t\tZ-Axis\r\n');
     for i = lastLog:index
-        fprintf(logFile, '%s\t\t%f\r\n', datestr(time(i), 'HH:MM:SS:FFF'), xData(i));
+        fprintf(logFile, '%s\t%f\r\n', datestr(time(i), 'HH:MM:SS.FFF'), xData(i));
     end
     fclose(logFile);
-    msg = 'log file created'
-    %Create a file and store xData(lastLog:index)
+
     lastLog = index;
 end
 
@@ -202,9 +208,15 @@ time = now;
 lastLog = index;
 lastLogMinute = minute(now);
 xData = sin(second(now));
-%Start the Single-thread periodic timer
-start(t);
 
+%GUI Handles manipulation
+set(handles.BTNDisconnect, 'Visible', 'on');
+set(handles.BTNConnect, 'Visible', 'off');
+set(handles.BTNPausePlot, 'Visible', 'on');
+set(handles.BTNFreqPlot, 'Visible', 'on');
+
+%Status Bar
+wb = waitbar(0, 'Connecting to Accelerometer device...');
 
 %Serial IO
 % s = serial(get(handles.serialPort, 'String'), 'BaudrRate', 9600);
@@ -212,10 +224,14 @@ start(t);
 %     s.BytesAvailableFcnMode = 'terminator';
 %     s.BytesAvailableFcn = @SerialDataAvailable;
 %     if (fopen(s) == 'closed')
-%         msgbox('Serial Port failed to connect');
+%         msgbox('Serial Port failed to connect', 'Connection Failed', 'error');
+%     else
+%         waitbar(1, wb);
 %     end
 % end
-
+delete(wb);
+%Start the Single-thread periodic timer
+start(t);
 
 % --- Executes on button press in BTNDisconnect.
 function BTNDisconnect_Callback(hObject, eventdata, handles)
@@ -228,6 +244,9 @@ global time;
 global lastLog;
 global xData;
 stop(t);
+%GUI Handles manipulation
+set(handles.BTNDisconnect, 'Visible', 'off');
+set(handles.BTNConnect, 'Visible', 'on');
 %Serial IO
 % global s;
 % if (s.Status == 'open')
@@ -238,11 +257,10 @@ stop(t);
 
 %Log the remaining data
 logFile = fopen(strcat('Log\', datestr(time(lastLog), 'dd-mmm-yyyy HH.MM.SS'), '.log'), 'w+');
-fprintf(logFile, 'Real-time Accelerometer Monitor: %s\r\n', datestr(now, 'dd-mmm-yyyy'));
-fprintf(logFile, '***********Data on x-axis************\r\n');
-fprintf(logFile, 'Time\t\t\tMagnitude\r\n');
+fprintf(logFile, 'Accelerometer Sensor Data:\r\n%s\r\n', datestr(now, 'dd-mmm-yyyy'));
+fprintf(logFile, 'Time\t\tX-Axis\t\tY-Axis\t\tZ-Axis\r\n');
 for i = lastLog:index
-    fprintf(logFile, '%s\t\t%f\r\n', datestr(time(i), 'HH:MM:SS:FFF'), xData(i));
+    fprintf(logFile, '%s\t%f\r\n', datestr(time(i), 'HH:MM:SS.FFF'), xData(i));
 end
 fclose(logFile);
 
@@ -258,6 +276,10 @@ global pausePlot;
 global time;
 global xData;
 global indexAtPause;
+
+%GUI Handles manipulation
+set(handles.BTNTimePlot, 'Visible', 'off');
+set(handles.BTNFreqPlot, 'Visible', 'on');
 
 %If the plotting is paused and the plot type is in frequency domain
 if (pausePlot && plotType)
@@ -279,6 +301,10 @@ global pausePlot;
 global t;
 global xData;
 global indexAtPause;
+
+%GUI Handles manipulation
+set(handles.BTNTimePlot, 'Visible', 'on');
+set(handles.BTNFreqPlot, 'Visible', 'off');
 
 %If the plotting is paused and the plot type is in time domain
 if (pausePlot && ~plotType)
@@ -306,6 +332,9 @@ if ~(pausePlot)     %Only on the first click
     indexAtPause = index;
 end
 pausePlot = 1;
+set(handles.BTNPausePlot, 'Visible', 'off');
+set(handles.BTNResumePlot, 'Visible', 'on');
+
 
 % --- Executes on button press in BTNResumePlot.
 function BTNResumePlot_Callback(hObject, eventdata, handles)
@@ -314,3 +343,80 @@ function BTNResumePlot_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 global pausePlot;
 pausePlot = 0;
+set(handles.BTNPausePlot, 'Visible', 'on');
+set(handles.BTNResumePlot, 'Visible', 'off');
+
+
+% --- Executes on button press in BTNBrowse.
+function BTNBrowse_Callback(hObject, eventdata, handles)
+% hObject    handle to BTNBrowse (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+global index;
+global indexAtPause;
+global time;
+global xData;
+global plotType;
+global pausePlot;
+global t;
+pausePlot = 1;
+%If not connected, then proceed, else show error message
+[filename pathname] = uigetfile({'*.log'},'Browse Log File');
+logFile = fopen(strcat(pathname, filename), 'r');
+tline = fgets(logFile);
+lineCtr = 1;
+index = 1;
+while ischar(tline)
+    dataStr = cell2mat(cellstr(tline));
+    if (lineCtr == 2)
+        try
+            dateArray = datevec(dataStr);
+        catch
+            msgbox('Cannot read log date', 'Read Error', 'error');
+            break;
+        end
+    elseif (lineCtr >= 4)
+        splitLine = regexp(dataStr, '\s', 'split');
+        timeStr = regexp(cell2mat(splitLine(1)), '[:]', 'split');
+        try
+            timeValues = str2double(timeStr);
+            xData(index) = str2double(splitLine(2));
+        catch
+            msgbox('Cannot read log time', 'Read error', 'error');
+            break;
+        end
+        %Add the time value to the dateArray
+        dateArray = [dateArray(1:3) timeValues];
+        time(index) = datenum(dateArray);
+        index = index + 1;
+    end
+    %update the new tLine
+    tline = fgets(logFile);
+    lineCtr = lineCtr + 1;
+end
+fclose(logFile);
+indexAtPause = index - 1;
+
+%GUI Handles Manipulation
+set(handles.BTNFreqPlot, 'Visible', 'on');
+
+%Plot
+if (plotType)
+    %FFT
+    nfft = 2^nextpow2(index);
+    magnitude = fft(xData, nfft)/index;
+    freq = (1/t.period)*linspace(0, 1, nfft/2 + 1)/2;
+    %Frequency Plot
+    plot(handles.xPlot_axes, freq, 2*abs(magnitude(1:nfft/2 + 1)), 'r');
+    xlabel(handles.xPlot_axes, 'Frequency (Hz)');
+    ylabel(handles.xPlot_axes, 'Magnitude');
+else
+    %Time plot
+    plot(handles.xPlot_axes, time, xData, 'r');
+    datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
+    xlabel(handles.xPlot_axes, strcat('Time at ', {' '}, datestr(clock, 'dd-mmm-yyyy')));
+    ylabel(handles.xPlot_axes, 'Magnitude');
+end
+drawnow;
+%else throw an error message
+%msgbox('Cannot browse file on active connection!', 'Browsing Failed','error');

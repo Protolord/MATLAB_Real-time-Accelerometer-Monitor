@@ -22,7 +22,7 @@ function varargout = RealTime_Accelerometer_Monitor(varargin)
 
 % Edit the above text to modify the response to help RealTime_Accelerometer_Monitor
 
-% Last Modified by GUIDE v2.5 14-Feb-2016 23:35:49
+% Last Modified by GUIDE v2.5 15-Feb-2016 06:26:50
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -55,6 +55,8 @@ function RealTime_Accelerometer_Monitor_OpeningFcn(hObject, eventdata, handles, 
 global t;
 global plotType;
 global pausePlot;
+global timeFrame;
+timeFrame = 0;
 % Choose default command line output for RealTime_Accelerometer_Monitor
 handles.output = hObject;
 
@@ -78,6 +80,9 @@ set(handles.BTNResumePlot, 'Visible', 'off');
 set(handles.BTNPausePlot, 'Visible', 'off');
 set(handles.BTNTimePlot, 'Visible', 'off');
 set(handles.BTNFreqPlot, 'Visible', 'off');
+set(handles.BTNTimeFrame, 'Visible', 'off');
+set(handles.STTimeFrame, 'Visible', 'off');
+set(handles.timeFrame, 'Visible', 'off');
 %Initial plotting properties
 plotType = 0;
 pausePlot = 0;
@@ -119,6 +124,26 @@ if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgr
     set(hObject,'BackgroundColor','white');
 end
 
+function timeFrame_Callback(hObject, eventdata, handles)
+% hObject    handle to timeFrame (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of timeFrame as text
+%        str2double(get(hObject,'String')) returns contents of timeFrame as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function timeFrame_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to timeFrame (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
 
 % function SerialDataAvailable
 % % --- Executes when serial data terminator is at the buffer
@@ -137,6 +162,7 @@ global pausePlot;
 global t;
 global lastLog;     %index at time of when the last data logging.
 global lastLogMinute;
+global timeFrame;
 
 %********************* OBTAINING DATA ***********************
 %Update Time
@@ -144,7 +170,7 @@ time = [time now];
 %Update Data
 sec = second(now);
 %new value, currently simulated, it should be taken from the sensor
-newValue = sin(2*pi*2*sec) + sin(2*pi*3*sec) + sin(2*pi*sec);
+newValue = sin(2*pi*3*sec) + sin(2*pi*sec);
 xData = [xData newValue];
 index = index + 1;
 
@@ -161,7 +187,18 @@ if ~(pausePlot)
         ylabel(handles.xPlot_axes, 'Magnitude');
     else
         %Time plot
-        plot(handles.xPlot_axes, time, xData, 'r');
+        if (timeFrame > 0)
+            fIndex = index - timeFrame/t.Period;   %firstIndex
+            if (fIndex < 1)
+                fIndex = 1;
+            end
+        else
+            fIndex = 1;
+        end
+        plot(handles.xPlot_axes, time(fIndex:index), xData(fIndex:index), 'r');
+        if fIndex > 1
+            axis(handles.xPlot_axes, [time(fIndex) now -2 2]);
+        end
         datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
         xlabel(handles.xPlot_axes, strcat('Time at ', {' '}, datestr(clock, 'dd-mmm-yyyy')));
         ylabel(handles.xPlot_axes, 'Magnitude');
@@ -216,6 +253,9 @@ set(handles.BTNDisconnect, 'Visible', 'on');
 set(handles.BTNConnect, 'Visible', 'off');
 set(handles.BTNPausePlot, 'Visible', 'on');
 set(handles.BTNFreqPlot, 'Visible', 'on');
+set(handles.BTNTimeFrame, 'Visible', 'on');
+set(handles.STTimeFrame, 'Visible', 'on');
+set(handles.timeFrame, 'Visible', 'on');
 
 %Status Bar
 wb = waitbar(0, 'Connecting to Accelerometer device...');
@@ -255,6 +295,9 @@ set(handles.BTNDisconnect, 'Visible', 'off');
 set(handles.BTNConnect, 'Visible', 'on');
 set(handles.BTNPausePlot, 'Visible', 'off');
 set(handles.BTNResumePlot, 'Visible', 'off');
+set(handles.BTNTimeFrame, 'Visible', 'off');
+set(handles.STTimeFrame, 'Visible', 'off');
+set(handles.timeFrame, 'Visible', 'off');
 %Serial IO
 % global s;
 % if (s.Status == 'open')
@@ -284,15 +327,27 @@ global pausePlot;
 global time;
 global xData;
 global indexAtPause;
+global timeFrame;
 
 %GUI Handles manipulation
 set(handles.BTNTimePlot, 'Visible', 'off');
 set(handles.BTNFreqPlot, 'Visible', 'on');
+set(handles.BTNTimeFrame, 'Visible', 'on');
+set(handles.STTimeFrame, 'Visible', 'on');
+set(handles.timeFrame, 'Visible', 'on');
 
 %If the plotting is paused and the plot type is in frequency domain
 if (pausePlot && plotType)
     %Then update the axes
-    plot(handles.xPlot_axes, time(1:indexAtPause), xData(1:indexAtPause), 'r');
+    if (timeFrame > 0)
+        fIndex = index - timeFrame/t.Period;   %firstIndex
+        if (fIndex < 1)
+            fIndex = 1;
+        end
+    else
+        fIndex = 1;
+    end
+    plot(handles.xPlot_axes, time(fIndex:indexAtPause), xData(fIndex:indexAtPause), 'r');
     datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
     xlabel(handles.xPlot_axes, strcat('Time at ', {' '}, datestr(clock, 'dd-mmm-yyyy')));
     ylabel(handles.xPlot_axes, 'Magnitude');
@@ -313,6 +368,9 @@ global indexAtPause;
 %GUI Handles manipulation
 set(handles.BTNTimePlot, 'Visible', 'on');
 set(handles.BTNFreqPlot, 'Visible', 'off');
+set(handles.BTNTimeFrame, 'Visible', 'off');
+set(handles.STTimeFrame, 'Visible', 'off');
+set(handles.timeFrame, 'Visible', 'off');
 
 %If the plotting is paused and the plot type is in time domain
 if (pausePlot && ~plotType)
@@ -385,7 +443,7 @@ if ~(pathname == 0)
             try
                 dateArray = datevec(dataStr);
             catch
-                msgbox('Cannot read log date', 'Read Error', 'error');
+                msgbox('Invalid Log Data', 'Read Error', 'error');
                 failToRead = 1; beep;
                 break;
             end
@@ -396,7 +454,7 @@ if ~(pathname == 0)
                 timeValues = str2double(timeStr);
                 xData(index) = str2double(splitLine(2));
             catch
-                msgbox('Cannot read log data', 'Read error', 'error');
+                msgbox('Invalid Log Data', 'Read error', 'error');
                 failToRead = 1; beep;
                 break;
             end
@@ -422,9 +480,15 @@ if ~failToRead
     if plotType
         set(handles.BTNTimePlot, 'Visible', 'on');
         set(handles.BTNFreqPlot, 'Visible', 'off');
+        set(handles.BTNTimeFrame, 'Visible', 'off');
+        set(handles.STTimeFrame, 'Visible', 'off');
+        set(handles.timeFrame, 'Visible', 'off');
     else
         set(handles.BTNTimePlot, 'Visible', 'off');
         set(handles.BTNFreqPlot, 'Visible', 'on');
+        set(handles.BTNTimeFrame, 'Visible', 'on');
+        set(handles.STTimeFrame, 'Visible', 'on');
+        set(handles.timeFrame, 'Visible', 'on');
     end
 
     %Plot
@@ -448,3 +512,24 @@ if ~failToRead
 end
 %else throw an error message
 %msgbox('Cannot browse file on active connection!', 'Browsing Failed','error');
+
+
+% --- Executes on button press in BTNTimeFrame.
+function BTNTimeFrame_Callback(hObject, eventdata, handles)
+% hObject    handle to BTNTimeFrame (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+global timeFrame;
+global index;
+try
+    timeFrame = str2double(get(handles.timeFrame, 'String'));
+catch
+    msgbox('Invalid Time Frame!', 'Time Frame error', 'error');
+    beep;
+end
+timeFrame = round(timeFrame);
+if (timeFrame > index)
+    msgbox('Time Frame value is too high!', 'Time Frame error', 'error');
+    beep;
+    timeFrame = 0;
+end

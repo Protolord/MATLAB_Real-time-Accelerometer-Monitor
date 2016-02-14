@@ -75,6 +75,11 @@ set(handles.zPlot_axes,'xtick',[],'ytick',[]);
 plotType = 0;
 pausePlot = 0;
 
+%Initially create Log folder
+if ~(exist('Log', 'file') == 7)
+    mkdir('Log');
+end
+
 % --- Outputs from this function are returned to the command line.
 function varargout = RealTime_Accelerometer_Monitor_OutputFcn(hObject, eventdata, handles) 
 % varargout  cell array for returning output args (see VARARGOUT);
@@ -123,17 +128,20 @@ global time;
 global plotType;   %0 for time domain, 1 for freq domain
 global pausePlot;
 global t;
+global lastLog;     %index at time of when the last data logging.
+global lastLogMinute;
 
+%********************* OBTAINING DATA ***********************
 %Update Time
 time = [time now];
 %Update Data
-c = clock;
+sec = second(now);
 %new value, currently simulated, it should be taken from the sensor
-newValue = sin(2*pi*2*c(end)) + sin(2*pi*3*c(end)) + sin(2*pi*c(end));
+newValue = sin(2*pi*2*sec) + sin(2*pi*3*sec) + sin(2*pi*sec);
 xData = [xData newValue];
 index = index + 1;
 
-%PLOTTING
+%********************** PLOTTING ***************************
 if ~(pausePlot)
     if (plotType)
         %FFT
@@ -154,8 +162,27 @@ if ~(pausePlot)
     drawnow;
 end
 
-msg='drawing ends';
+%********************* DATA LOGGING ************************
+currentMinute = minute(now);
+if (~mod(currentMinute, 2) && currentMinute > lastLogMinute) %Log data every 2 minutes
+    lastLogMinute = currentMinute;
+    logFile = fopen(strcat('Log\', datestr(time(lastLog), 'dd-mmm-yyyy HH.MM.SS'), '.log'), 'w+');
+    fprintf(logFile, 'Real-time Accelerometer Monitor: %s\r\n', datestr(now, 'dd-mmm-yyyy'));
+    fprintf(logFile, '***********Data on x-axis************\r\n');
+    fprintf(logFile, 'Time\t\t\tMagnitude\r\n');
+    for i = lastLog:index
+        fprintf(logFile, '%s\t\t%f\r\n', datestr(time(i), 'HH:MM:SS:FFF'), xData(i));
+    end
+    fclose(logFile);
+    msg = 'log file created'
+    %Create a file and store xData(lastLog:index)
+    lastLog = index;
+end
 
+
+%==========================================================================
+%=========================== BUTTON CALLBACKS =============================
+%==========================================================================
 
 % --- Executes on button press in BTNConnect.
 function BTNConnect_Callback(hObject, eventdata, handles)
@@ -167,11 +194,14 @@ global t; %timer
 global index;
 global xData;
 global time;
+global lastLog;
+global lastLogMinute;
 %Initialize variables in plotting
 index = 1;
 time = now;
-c = clock;
-xData = sin(c(end));
+lastLog = index;
+lastLogMinute = minute(now);
+xData = sin(second(now));
 %Start the Single-thread periodic timer
 start(t);
 
@@ -193,6 +223,11 @@ function BTNDisconnect_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 global t;
+global index
+global time;
+global lastLog;
+global xData;
+stop(t);
 %Serial IO
 % global s;
 % if (s.Status == 'open')
@@ -200,14 +235,18 @@ global t;
 % end
 % delete(s);
 % clear s;
-stop(t);
-msg='timer stopped'
+
+%Log the remaining data
+logFile = fopen(strcat('Log\', datestr(time(lastLog), 'dd-mmm-yyyy HH.MM.SS'), '.log'), 'w+');
+fprintf(logFile, 'Real-time Accelerometer Monitor: %s\r\n', datestr(now, 'dd-mmm-yyyy'));
+fprintf(logFile, '***********Data on x-axis************\r\n');
+fprintf(logFile, 'Time\t\t\tMagnitude\r\n');
+for i = lastLog:index
+    fprintf(logFile, '%s\t\t%f\r\n', datestr(time(i), 'HH:MM:SS:FFF'), xData(i));
+end
+fclose(logFile);
 
 
-
-%==========================================================================
-%=========================== BUTTON CALLBACKS =============================
-%==========================================================================
 
 % --- Executes on button press in BTNTimePlot.
 function BTNTimePlot_Callback(hObject, eventdata, handles)

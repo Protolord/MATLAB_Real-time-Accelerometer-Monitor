@@ -202,11 +202,13 @@ global xData;
 global time;
 global lastLog;
 global lastLogMinute;
+global pausePlot;
 %Initialize variables in plotting
 index = 1;
 time = now;
 lastLog = index;
 lastLogMinute = minute(now);
+pausePlot = 0;
 xData = sin(second(now));
 
 %GUI Handles manipulation
@@ -243,10 +245,16 @@ global index
 global time;
 global lastLog;
 global xData;
+global pausePlot;
+global indexAtPause;
+pausePlot = 1;
+indexAtPause = index;
 stop(t);
 %GUI Handles manipulation
 set(handles.BTNDisconnect, 'Visible', 'off');
 set(handles.BTNConnect, 'Visible', 'on');
+set(handles.BTNPausePlot, 'Visible', 'off');
+set(handles.BTNResumePlot, 'Visible', 'off');
 %Serial IO
 % global s;
 % if (s.Status == 'open')
@@ -362,61 +370,81 @@ global t;
 pausePlot = 1;
 %If not connected, then proceed, else show error message
 [filename pathname] = uigetfile({'*.log'},'Browse Log File');
-logFile = fopen(strcat(pathname, filename), 'r');
-tline = fgets(logFile);
-lineCtr = 1;
-index = 1;
-while ischar(tline)
-    dataStr = cell2mat(cellstr(tline));
-    if (lineCtr == 2)
-        try
-            dateArray = datevec(dataStr);
-        catch
-            msgbox('Cannot read log date', 'Read Error', 'error');
-            break;
-        end
-    elseif (lineCtr >= 4)
-        splitLine = regexp(dataStr, '\s', 'split');
-        timeStr = regexp(cell2mat(splitLine(1)), '[:]', 'split');
-        try
-            timeValues = str2double(timeStr);
-            xData(index) = str2double(splitLine(2));
-        catch
-            msgbox('Cannot read log time', 'Read error', 'error');
-            break;
-        end
-        %Add the time value to the dateArray
-        dateArray = [dateArray(1:3) timeValues];
-        time(index) = datenum(dateArray);
-        index = index + 1;
-    end
-    %update the new tLine
+if ~(pathname == 0)
+    logFile = fopen(strcat(pathname, filename), 'r');
     tline = fgets(logFile);
-    lineCtr = lineCtr + 1;
-end
-fclose(logFile);
-indexAtPause = index - 1;
-
-%GUI Handles Manipulation
-set(handles.BTNFreqPlot, 'Visible', 'on');
-
-%Plot
-if (plotType)
-    %FFT
-    nfft = 2^nextpow2(index);
-    magnitude = fft(xData, nfft)/index;
-    freq = (1/t.period)*linspace(0, 1, nfft/2 + 1)/2;
-    %Frequency Plot
-    plot(handles.xPlot_axes, freq, 2*abs(magnitude(1:nfft/2 + 1)), 'r');
-    xlabel(handles.xPlot_axes, 'Frequency (Hz)');
-    ylabel(handles.xPlot_axes, 'Magnitude');
+    lineCtr = 1;
+    failToRead = 0;
+    %Initialize Plot
+    index = 1;
+    time = now;
+    xData = sin(second(now));
+    while ischar(tline)
+        dataStr = cell2mat(cellstr(tline));
+        if (lineCtr == 2)
+            try
+                dateArray = datevec(dataStr);
+            catch
+                msgbox('Cannot read log date', 'Read Error', 'error');
+                failToRead = 1; beep;
+                break;
+            end
+        elseif (lineCtr >= 4)
+            splitLine = regexp(dataStr, '\s', 'split');
+            timeStr = regexp(cell2mat(splitLine(1)), '[:]', 'split');
+            try
+                timeValues = str2double(timeStr);
+                xData(index) = str2double(splitLine(2));
+            catch
+                msgbox('Cannot read log data', 'Read error', 'error');
+                failToRead = 1; beep;
+                break;
+            end
+            %Add the time value to the dateArray
+            dateArray = [dateArray(1:3) timeValues];
+            time(index) = datenum(dateArray);
+            index = index + 1;
+        end
+        %update the new tLine
+        tline = fgets(logFile);
+        lineCtr = lineCtr + 1;
+    end
+    fclose(logFile);
 else
-    %Time plot
-    plot(handles.xPlot_axes, time, xData, 'r');
-    datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
-    xlabel(handles.xPlot_axes, strcat('Time at ', {' '}, datestr(clock, 'dd-mmm-yyyy')));
-    ylabel(handles.xPlot_axes, 'Magnitude');
+    failToRead = 1;
 end
-drawnow;
+
+%if the data extraction succeed
+if ~failToRead
+    indexAtPause = index - 1;
+
+    %GUI Handles Manipulation
+    if plotType
+        set(handles.BTNTimePlot, 'Visible', 'on');
+        set(handles.BTNFreqPlot, 'Visible', 'off');
+    else
+        set(handles.BTNTimePlot, 'Visible', 'off');
+        set(handles.BTNFreqPlot, 'Visible', 'on');
+    end
+
+    %Plot
+    if (plotType)
+        %FFT
+        nfft = 2^nextpow2(index);
+        magnitude = fft(xData, nfft)/index;
+        freq = (1/t.period)*linspace(0, 1, nfft/2 + 1)/2;
+        %Frequency Plot
+        plot(handles.xPlot_axes, freq, 2*abs(magnitude(1:nfft/2 + 1)), 'r');
+        xlabel(handles.xPlot_axes, 'Frequency (Hz)');
+        ylabel(handles.xPlot_axes, 'Magnitude');
+    else
+        %Time plot
+        plot(handles.xPlot_axes, time, xData, 'r');
+        datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
+        xlabel(handles.xPlot_axes, strcat('Time at ', {' '}, datestr(clock, 'dd-mmm-yyyy')));
+        ylabel(handles.xPlot_axes, 'Magnitude');
+    end
+    drawnow;
+end
 %else throw an error message
 %msgbox('Cannot browse file on active connection!', 'Browsing Failed','error');

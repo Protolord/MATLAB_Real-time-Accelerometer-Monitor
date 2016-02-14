@@ -22,7 +22,7 @@ function varargout = RealTime_Accelerometer_Monitor(varargin)
 
 % Edit the above text to modify the response to help RealTime_Accelerometer_Monitor
 
-% Last Modified by GUIDE v2.5 13-Feb-2016 23:16:08
+% Last Modified by GUIDE v2.5 14-Feb-2016 12:17:01
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -53,7 +53,8 @@ function RealTime_Accelerometer_Monitor_OpeningFcn(hObject, eventdata, handles, 
 % handles    structure with handles and user data (see GUIDATA)
 % varargin   command line arguments to RealTime_Accelerometer_Monitor (see VARARGIN)
 global t;
-
+global plotType;
+global pausePlot;
 % Choose default command line output for RealTime_Accelerometer_Monitor
 handles.output = hObject;
 
@@ -64,13 +65,15 @@ guidata(hObject, handles);
 % uiwait(handles.figure1);
 
 t = timer;
-t.Period = 0.1;
+t.Period = 0.02;
 t.TimerFcn = {@MainUpdate,hObject,handles};
 t.ExecutionMode = 'fixedRate';
 %GUI Axes properties
 set(handles.xPlot_axes,'xtick',[],'ytick',[]);
 set(handles.yPlot_axes,'xtick',[],'ytick',[]);
 set(handles.zPlot_axes,'xtick',[],'ytick',[]);
+plotType = 0;
+pausePlot = 0;
 
 % --- Outputs from this function are returned to the command line.
 function varargout = RealTime_Accelerometer_Monitor_OutputFcn(hObject, eventdata, handles) 
@@ -81,22 +84,6 @@ function varargout = RealTime_Accelerometer_Monitor_OutputFcn(hObject, eventdata
 
 % Get default command line output from handles structure
 varargout{1} = handles.output;
-
-
-% --- Executes on button press in BTNTimePlot.
-function BTNTimePlot_Callback(hObject, eventdata, handles)
-% hObject    handle to BTNTimePlot (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-
-% --- Executes on button press in BTNFreqPlot.
-function BTNFreqPlot_Callback(hObject, eventdata, handles)
-% hObject    handle to BTNFreqPlot (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-global frequency;
-
 
 
 function serialPort_Callback(hObject, eventdata, handles)
@@ -133,14 +120,39 @@ function MainUpdate(obj,event,hObject,handles)
 global xData;
 global index;
 global time;
-datetick(handles.xPlot_axes, 'x','HH:MM:SS');
+global plotType;   %0 for time domain, 1 for freq domain
+global pausePlot;
+global t;
+
 %Update Time
 time = [time now];
 %Update Data
-xData = [xData sin(index)];
-plot(handles.xPlot_axes, time, xData);
+c = clock;
+%new value, currently simulated, it should be taken from the sensor
+newValue = sin(2*pi*2*c(end)) + sin(2*pi*3*c(end)) + sin(2*pi*c(end))
+xData = [xData newValue];
+index = index + 1;
 
-index = index + 1
+%PLOTTING
+if ~(pausePlot)
+    if (plotType)
+        %FFT
+        nfft = 2^nextpow2(index);
+        magnitude = fft(xData, nfft)/index;
+        freq = (1/t.period)*linspace(0, 1, nfft/2 + 1)/2;
+        %Frequency Plot
+        plot(handles.xPlot_axes, freq, 2*abs(magnitude(1:nfft/2 + 1)));
+        xlabel(handles.xPlot_axes, 'Frequency (Hz)');
+        ylabel(handles.xPlot_axes, 'Magnitude');
+    else
+        %Time plot
+        plot(handles.xPlot_axes, time, xData);
+        datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
+        xlabel(handles.xPlot_axes, strcat('Time at ', datestr(clock, 'dd-mmm-yyyy')));
+        ylabel(handles.xPlot_axes, 'Magnitude');
+    end
+end
+
 drawnow;
 msg='drawing ends'
 
@@ -158,7 +170,8 @@ global time;
 %Initialize variables in plotting
 index = 1;
 time = now;
-xData = 0;
+c = clock
+xData = sin(c(end));
 %Start the Single-thread periodic timer
 start(t);
 
@@ -189,3 +202,53 @@ global t;
 % clear s;
 stop(t);
 msg='timer stopped'
+
+
+
+%==========================================================================
+%=========================== BUTTON CALLBACKS =============================
+%==========================================================================
+
+% --- Executes on button press in BTNTimePlot.
+function BTNTimePlot_Callback(hObject, eventdata, handles)
+% hObject    handle to BTNTimePlot (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+global plotType;
+global pausePlot;
+
+%If the plotting is paused and the plot type is in frequency domain
+if (pausePlot && plotType)
+    %Then update the axes
+    plot(handles.xPlot_axes, time(0:indexAtPause, xData);
+    datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
+    xlabel(handles.xPlot_axes, strcat('Time at ', datestr(clock, 'dd-mmm-yyyy')));
+    ylabel(handles.xPlot_axes, 'Magnitude');
+end
+plotType = 0;
+% --- Executes on button press in BTNFreqPlot.
+function BTNFreqPlot_Callback(hObject, eventdata, handles)
+% hObject    handle to BTNFreqPlot (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+global plotType;
+plotType = 1;
+
+% --- Executes on button press in BTNPausePlot.
+function BTNPausePlot_Callback(hObject, eventdata, handles)
+% hObject    handle to BTNPausePlot (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+global pausePlot;
+global indexAtPause;
+global index;
+pausePlot = 1;
+indexAtPause = index;
+
+% --- Executes on button press in BTNResumePlot.
+function BTNResumePlot_Callback(hObject, eventdata, handles)
+% hObject    handle to BTNResumePlot (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+global pausePlot;
+pausePlot = 0;

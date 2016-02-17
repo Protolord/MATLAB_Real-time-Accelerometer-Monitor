@@ -1,4 +1,5 @@
 function varargout = RealTime_Accelerometer_Monitor(varargin)
+
 % REALTIME_ACCELEROMETER_MONITOR MATLAB code for RealTime_Accelerometer_Monitor.fig
 %      REALTIME_ACCELEROMETER_MONITOR, by itself, creates a new REALTIME_ACCELEROMETER_MONITOR or raises the existing
 %      singleton*.
@@ -22,7 +23,7 @@ function varargout = RealTime_Accelerometer_Monitor(varargin)
 
 % Edit the above text to modify the response to help RealTime_Accelerometer_Monitor
 
-% Last Modified by GUIDE v2.5 15-Feb-2016 06:26:50
+% Last Modified by GUIDE v2.5 17-Feb-2016 20:06:28
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -64,7 +65,7 @@ handles.output = hObject;
 guidata(hObject, handles);
 
 % UIWAIT makes RealTime_Accelerometer_Monitor wait for user response (see UIRESUME)
-% uiwait(handles.figure1);
+% uiwait(handles.mainFigure);
 
 %Timer Initialization
 t = timer;
@@ -183,6 +184,8 @@ if ~(pausePlot)
         freq = (1/t.period)*linspace(0, 1, nfft/2 + 1)/2;
         %Frequency Plot
         plot(handles.xPlot_axes, freq, 2*abs(magnitude(1:nfft/2 + 1)), 'r');
+        set(handles.xPlot_axes, 'XGrid', 'on');
+        set(handles.xPlot_axes, 'YGrid', 'on');
         xlabel(handles.xPlot_axes, 'Frequency (Hz)');
         ylabel(handles.xPlot_axes, 'Magnitude');
     else
@@ -191,15 +194,19 @@ if ~(pausePlot)
             fIndex = index - timeFrame/t.Period;   %firstIndex
             if (fIndex < 1)
                 fIndex = 1;
-            end
+            end    
         else
             fIndex = 1;
         end
         plot(handles.xPlot_axes, time(fIndex:index), xData(fIndex:index), 'r');
+        set(handles.xPlot_axes, 'XGrid', 'on');
+        set(handles.xPlot_axes, 'YGrid', 'on');
         if fIndex > 1
             axis(handles.xPlot_axes, [time(fIndex) now -2 2]);
+            datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keeplimits', 'keepticks');
+        else
+            datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
         end
-        datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
         xlabel(handles.xPlot_axes, strcat('Time at ', {' '}, datestr(clock, 'dd-mmm-yyyy')));
         ylabel(handles.xPlot_axes, 'Magnitude');
     end
@@ -246,7 +253,10 @@ time = now;
 lastLog = index;
 lastLogMinute = minute(now);
 pausePlot = 0;
-xData = sin(second(now));
+sec = second(now);
+%new value, currently simulated, it should be taken from the sensor
+newValue = sin(2*pi*3*sec) + sin(2*pi*sec);
+xData = newValue;
 
 %GUI Handles manipulation
 set(handles.BTNDisconnect, 'Visible', 'on');
@@ -298,6 +308,7 @@ set(handles.BTNResumePlot, 'Visible', 'off');
 set(handles.BTNTimeFrame, 'Visible', 'off');
 set(handles.STTimeFrame, 'Visible', 'off');
 set(handles.timeFrame, 'Visible', 'off');
+
 %Serial IO
 % global s;
 % if (s.Status == 'open')
@@ -328,14 +339,21 @@ global time;
 global xData;
 global indexAtPause;
 global timeFrame;
+global t;
+global index;
 
 %GUI Handles manipulation
 set(handles.BTNTimePlot, 'Visible', 'off');
 set(handles.BTNFreqPlot, 'Visible', 'on');
-set(handles.BTNTimeFrame, 'Visible', 'on');
-set(handles.STTimeFrame, 'Visible', 'on');
-set(handles.timeFrame, 'Visible', 'on');
-
+if (pausePlot)
+    set(handles.BTNTimeFrame, 'Visible', 'off');
+    set(handles.STTimeFrame, 'Visible', 'off');
+    set(handles.timeFrame, 'Visible', 'off');
+else
+    set(handles.BTNTimeFrame, 'Visible', 'on');
+    set(handles.STTimeFrame, 'Visible', 'on');
+    set(handles.timeFrame, 'Visible', 'on');
+end
 %If the plotting is paused and the plot type is in frequency domain
 if (pausePlot && plotType)
     %Then update the axes
@@ -400,7 +418,9 @@ end
 pausePlot = 1;
 set(handles.BTNPausePlot, 'Visible', 'off');
 set(handles.BTNResumePlot, 'Visible', 'on');
-
+set(handles.BTNTimeFrame, 'Visible', 'off');
+set(handles.STTimeFrame, 'Visible', 'off');
+set(handles.timeFrame, 'Visible', 'off');
 
 % --- Executes on button press in BTNResumePlot.
 function BTNResumePlot_Callback(hObject, eventdata, handles)
@@ -408,9 +428,19 @@ function BTNResumePlot_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 global pausePlot;
+global plotType;
 pausePlot = 0;
 set(handles.BTNPausePlot, 'Visible', 'on');
 set(handles.BTNResumePlot, 'Visible', 'off');
+if (plotType)
+    set(handles.BTNTimeFrame, 'Visible', 'off');
+    set(handles.STTimeFrame, 'Visible', 'off');
+    set(handles.timeFrame, 'Visible', 'off');
+else
+    set(handles.BTNTimeFrame, 'Visible', 'on');
+    set(handles.STTimeFrame, 'Visible', 'on');
+    set(handles.timeFrame, 'Visible', 'on');
+end
 
 
 % --- Executes on button press in BTNBrowse.
@@ -480,17 +510,14 @@ if ~failToRead
     if plotType
         set(handles.BTNTimePlot, 'Visible', 'on');
         set(handles.BTNFreqPlot, 'Visible', 'off');
-        set(handles.BTNTimeFrame, 'Visible', 'off');
-        set(handles.STTimeFrame, 'Visible', 'off');
-        set(handles.timeFrame, 'Visible', 'off');
     else
         set(handles.BTNTimePlot, 'Visible', 'off');
         set(handles.BTNFreqPlot, 'Visible', 'on');
-        set(handles.BTNTimeFrame, 'Visible', 'on');
-        set(handles.STTimeFrame, 'Visible', 'on');
-        set(handles.timeFrame, 'Visible', 'on');
     end
-
+    set(handles.BTNTimeFrame, 'Visible', 'off');
+    set(handles.STTimeFrame, 'Visible', 'off');
+    set(handles.timeFrame, 'Visible', 'off');
+    
     %Plot
     if (plotType)
         %FFT
@@ -521,6 +548,8 @@ function BTNTimeFrame_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 global timeFrame;
 global index;
+global t;
+
 try
     timeFrame = str2double(get(handles.timeFrame, 'String'));
 catch
@@ -528,7 +557,7 @@ catch
     beep;
 end
 timeFrame = round(timeFrame);
-if (timeFrame > index)
+if (timeFrame > index/t.Period)
     msgbox('Time Frame value is too high!', 'Time Frame error', 'error');
     beep;
     timeFrame = 0;

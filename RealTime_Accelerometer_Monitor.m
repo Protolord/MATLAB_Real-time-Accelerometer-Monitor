@@ -1,27 +1,22 @@
 function varargout = RealTime_Accelerometer_Monitor(varargin)
 
-% REALTIME_ACCELEROMETER_MONITOR MATLAB code for RealTime_Accelerometer_Monitor.fig
-%      REALTIME_ACCELEROMETER_MONITOR, by itself, creates a new REALTIME_ACCELEROMETER_MONITOR or raises the existing
-%      singleton*.
-%
-%      H = REALTIME_ACCELEROMETER_MONITOR returns the handle to a new REALTIME_ACCELEROMETER_MONITOR or the handle to
-%      the existing singleton*.
-%
-%      REALTIME_ACCELEROMETER_MONITOR('CALLBACK',hObject,eventData,handles,...) calls the local
-%      function named CALLBACK in REALTIME_ACCELEROMETER_MONITOR.M with the given input arguments.
-%
-%      REALTIME_ACCELEROMETER_MONITOR('Property','Value',...) creates a new REALTIME_ACCELEROMETER_MONITOR or raises the
-%      existing singleton*.  Starting from the left, property value pairs are
-%      applied to the GUI before RealTime_Accelerometer_Monitor_OpeningFcn gets called.  An
-%      unrecognized property name or invalid value makes property application
-%      stop.  All inputs are passed to RealTime_Accelerometer_Monitor_OpeningFcn via varargin.
-%
-%      *See GUI Options on GUIDE's Tools menu.  Choose "GUI allows only one
-%      instance to run (singleton)".
-%
-% See also: GUIDE, GUIDATA, GUIHANDLES
+% Plots data (Time Domain and Frequency Domain) given by an accelerometer sensor.
+% Also creates a log of the data every 2 minutes or when active connection
+% is terminated.
 
-% Edit the above text to modify the response to help RealTime_Accelerometer_Monitor
+
+% Mapua Institute of Technology
+% School of Electrical, Electronics and Computer Engineering
+
+%To do:
+% - Include current nodeName in the Figure.
+% - Log File creation should be in another thread to avoid disrupting the
+%   periodic timer.
+% - Every 6 minutes, clear all data to avoid memory overload since the data
+%   is already stored in the log file.
+% - Data must come from the sensors via Serial Connection.
+% - The nodeName must come from the sensors upon clicking the BTNConnect
+% - Improve the GUI Design.
 
 % Last Modified by GUIDE v2.5 17-Feb-2016 20:06:28
 
@@ -45,7 +40,6 @@ end
 % End initialization code - DO NOT EDIT
 
 
-
 % --- Executes just before RealTime_Accelerometer_Monitor is made visible.
 function RealTime_Accelerometer_Monitor_OpeningFcn(hObject, eventdata, handles, varargin)
 % This function has no output args, see OutputFcn.
@@ -57,6 +51,7 @@ global t;
 global plotType;
 global pausePlot;
 global timeFrame;
+global clockDisplay;
 timeFrame = 0;
 % Choose default command line output for RealTime_Accelerometer_Monitor
 handles.output = hObject;
@@ -69,7 +64,7 @@ guidata(hObject, handles);
 
 %Timer Initialization
 t = timer;
-t.Period = 0.02;
+t.Period = 0.05;
 t.TimerFcn = {@MainUpdate,hObject,handles};
 t.ExecutionMode = 'fixedRate';
 %GUI Handles Initial Properties
@@ -87,11 +82,11 @@ set(handles.timeFrame, 'Visible', 'off');
 %Initial plotting properties
 plotType = 0;
 pausePlot = 0;
-
-%Initially create Log folder
-if ~(exist('Log', 'file') == 7)
-    mkdir('Log');
-end
+clockDisplay = uicontrol(handles.mainFigure, 'Style', 'Text',...
+                        'String', datestr(now, 'dd-mmm-yyyy HH:MM:SS.FFF'),...
+                        'Position', [775 600 120 40],...
+                        'FontSize', 13);
+set(clockDisplay, 'Visible', 'off');
 
 % --- Outputs from this function are returned to the command line.
 function varargout = RealTime_Accelerometer_Monitor_OutputFcn(hObject, eventdata, handles) 
@@ -146,12 +141,6 @@ if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgr
     set(hObject,'BackgroundColor','white');
 end
 
-% function SerialDataAvailable
-% % --- Executes when serial data terminator is at the buffer
-% global s;
-% if (s.BytesAvailable > 0)
-%     data = fscanf(s);
-% end
 
 %Create the log file in a different thread to avoid disrupting the timer
 function CreateLogFile(t, x, y, z, i1, in)
@@ -165,7 +154,6 @@ function CreateLogFile(t, x, y, z, i1, in)
  fclose(logFile);
 
 
-
 function MainUpdate(obj,event,hObject,handles)
 % System Core
 global xData;
@@ -177,6 +165,8 @@ global t;
 global lastLog;     %index at time of when the last data logging.
 global lastLogMinute;
 global timeFrame;
+global nodeName;
+global clockDisplay;
 
 %********************* OBTAINING DATA ***********************
 %Update Time
@@ -191,6 +181,8 @@ index = index + 1;
 
 %********************** PLOTTING ***************************
 if ~(pausePlot)
+    %Update Clock display
+    set(clockDisplay, 'String', datestr(now, 'dd-mmm-yyyy HH:MM:SS.FFF'));
     if (plotType)
         %FFT
         nfft = 2^nextpow2(index);
@@ -232,16 +224,15 @@ if (~mod(currentMinute, 2) && currentMinute > lastLogMinute && floor(second(curr
     %j = batch('CreateLogFile', 0, {time, xData, xData, xData, lastLog, index});
     %CreateLogFile(time, xData, xData, xData, lastLog, index)
     %Create a file and store Data(lastLog:index)
-    logFile = fopen(strcat('Log\', datestr(time(lastLog), 'yyyy-mmm-dd'), ' @', datestr(time(lastLog), 'HH.MM.SS'), '-', datestr(time(index-1), 'HH.MM.SS'),'.log'), 'w+');
-    fprintf(logFile, 'Accelerometer Sensor Data:\r\n%s\r\n', datestr(now, 'dd-mmm-yyyy'));
+    logFile = fopen(strcat(nodeName,' Log\', datestr(time(lastLog), 'yyyy-mmm-dd'), ' @', datestr(time(lastLog), 'HH.MM.SS'), '-', datestr(time(index-1), 'HH.MM.SS'),'.log'), 'wt');
+    fprintf(logFile, '%s Data\r\n%s\r\n', nodeName, datestr(now, 'dd-mmm-yyyy'));
     fprintf(logFile, 'Time\t\tX-Axis\t\tY-Axis\t\tZ-Axis\r\n');
     for i = lastLog:(index-1)
-        fprintf(logFile, '%s\t%f\r\n', datestr(time(i), 'HH:MM:SS.FFF'), xData(i));
+        fprintf(logFile, '%s\t%d\t%d\t%d\r\n', datestr(time(i), 'HH:MM:SS.FFF'), xData(i), xData(i), xData(i));
     end
     fclose(logFile);
     lastLog = index;
 end
-
 
 %==========================================================================
 %=========================== BUTTON CALLBACKS =============================
@@ -260,6 +251,8 @@ global time;
 global lastLog;
 global lastLogMinute;
 global pausePlot;
+global nodeName;
+global clockDisplay;
 %Initialize variables in plotting
 index = 1;
 time = now;
@@ -279,6 +272,7 @@ set(handles.BTNFreqPlot, 'Visible', 'on');
 set(handles.BTNTimeFrame, 'Visible', 'on');
 set(handles.STTimeFrame, 'Visible', 'on');
 set(handles.timeFrame, 'Visible', 'on');
+set(clockDisplay, 'Visible', 'on');
 
 %Status Bar
 wb = waitbar(0, 'Connecting to Accelerometer device...');
@@ -294,7 +288,14 @@ wb = waitbar(0, 'Connecting to Accelerometer device...');
 %         waitbar(1, wb);
 %     end
 % end
+nodeName = 'Sensor1';   %temporary assign sensor name
 delete(wb);
+
+%Initially create Log folder
+if ~(exist(strcat(nodeName, ' Log'), 'file') == 7)
+    mkdir(strcat(nodeName, ' Log'));
+end
+
 %Start the Single-thread periodic timer
 start(t);
 
@@ -310,6 +311,9 @@ global lastLog;
 global xData;
 global pausePlot;
 global indexAtPause;
+global nodeName;
+global clockDisplay;
+
 pausePlot = 1;
 indexAtPause = index;
 stop(t);
@@ -321,6 +325,7 @@ set(handles.BTNResumePlot, 'Visible', 'off');
 set(handles.BTNTimeFrame, 'Visible', 'off');
 set(handles.STTimeFrame, 'Visible', 'off');
 set(handles.timeFrame, 'Visible', 'off');
+set(clockDisplay, 'Visible', 'off');
 
 %Serial IO
 % global s;
@@ -331,11 +336,11 @@ set(handles.timeFrame, 'Visible', 'off');
 % clear s;
 
 %Log the remaining data
-logFile = fopen(strcat('Log\', datestr(time(lastLog), 'yyyy-mmm-dd'), ' @', datestr(time(lastLog), 'HH.MM.SS'), '-', datestr(time(index-1), 'HH.MM.SS'),'.log'), 'w+');
-fprintf(logFile, 'Accelerometer Sensor Data:\r\n%s\r\n', datestr(now, 'dd-mmm-yyyy'));
+logFile = fopen(strcat(nodeName,' Log\', datestr(time(lastLog), 'yyyy-mmm-dd'), ' @', datestr(time(lastLog), 'HH.MM.SS'), '-', datestr(time(index-1), 'HH.MM.SS'),'.log'), 'w+');
+fprintf(logFile, '%s Data\r\n%s\r\n', nodeName, datestr(now, 'dd-mmm-yyyy'));
 fprintf(logFile, 'Time\t\tX-Axis\t\tY-Axis\t\tZ-Axis\r\n');
 for i = lastLog:index
-    fprintf(logFile, '%s\t%f\r\n', datestr(time(i), 'HH:MM:SS.FFF'), xData(i));
+    fprintf(logFile, '%s\t%d\t%d\t%d\r\n', datestr(time(i), 'HH:MM:SS.FFF'), xData(i), xData(i), xData(i));
 end
 fclose(logFile);
 
@@ -382,6 +387,9 @@ if (pausePlot && plotType)
     datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
     xlabel(handles.xPlot_axes, 'Time (HH:MM:SS)');
     ylabel(handles.xPlot_axes, 'Magnitude');
+    set(handles.xPlot_axes, 'XGrid', 'on');
+    set(handles.xPlot_axes, 'YGrid', 'on');
+    drawnow;
 end
 plotType = 0;
 
@@ -413,6 +421,9 @@ if (pausePlot && ~plotType)
     plot(handles.xPlot_axes, freq, 2*abs(magnitude(1:nfft/2 + 1)), 'r');
     xlabel(handles.xPlot_axes, 'Frequency (Hz)');
     ylabel(handles.xPlot_axes, 'Magnitude');
+    set(handles.xPlot_axes, 'XGrid', 'on');
+    set(handles.xPlot_axes, 'YGrid', 'on');
+    drawnow;
 end
 plotType = 1;
 
@@ -424,7 +435,6 @@ function BTNPausePlot_Callback(hObject, eventdata, handles)
 global pausePlot;
 global indexAtPause;
 global index;
-
 if ~(pausePlot)     %Only on the first click
     indexAtPause = index;
 end
@@ -445,6 +455,7 @@ global plotType;
 pausePlot = 0;
 set(handles.BTNPausePlot, 'Visible', 'on');
 set(handles.BTNResumePlot, 'Visible', 'off');
+
 if (plotType)
     set(handles.BTNTimeFrame, 'Visible', 'off');
     set(handles.STTimeFrame, 'Visible', 'off');
@@ -548,7 +559,9 @@ if ~failToRead
         xlabel(handles.xPlot_axes, 'Time (HH:MM:SS)');
         ylabel(handles.xPlot_axes, 'Magnitude');
     end
-    %drawnow;
+    set(handles.xPlot_axes, 'XGrid', 'on');
+    set(handles.xPlot_axes, 'YGrid', 'on');
+    drawnow;
 end
 %else throw an error message
 %msgbox('Cannot browse file on active connection!', 'Browsing Failed','error');

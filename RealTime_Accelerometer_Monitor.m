@@ -153,6 +153,19 @@ end
 %     data = fscanf(s);
 % end
 
+%Create the log file in a different thread to avoid disrupting the timer
+function CreateLogFile(t, x, y, z, i1, in)
+%Create a file and store Data(lastLog:index)
+ logFile = fopen(strcat('Log\', datestr(t(i1), 'dd-mmm-yyyy HH.MM.SS'), '.log'), 'w+');
+ fprintf(logFile, 'Accelerometer Sensor Data:\r\n%s\r\n', datestr(now, 'dd-mmm-yyyy'));
+ fprintf(logFile, 'Time\t\tX-Axis\t\tY-Axis\t\tZ-Axis\r\n');
+ for i = i1:in
+     fprintf(logFile, '%s\t%f\t%f\t%f\r\n', datestr(t(i), 'HH:MM:SS.FFF'), x(i), y(i), z(i));
+ end
+ fclose(logFile);
+
+
+
 function MainUpdate(obj,event,hObject,handles)
 % System Core
 global xData;
@@ -167,9 +180,10 @@ global timeFrame;
 
 %********************* OBTAINING DATA ***********************
 %Update Time
-time = [time now];
+current = now;
+time = [time current];
 %Update Data
-sec = second(now);
+sec = second(current);
 %new value, currently simulated, it should be taken from the sensor
 newValue = sin(2*pi*3*sec) + sin(2*pi*sec);
 xData = [xData newValue];
@@ -184,8 +198,6 @@ if ~(pausePlot)
         freq = (1/t.period)*linspace(0, 1, nfft/2 + 1)/2;
         %Frequency Plot
         plot(handles.xPlot_axes, freq, 2*abs(magnitude(1:nfft/2 + 1)), 'r');
-        set(handles.xPlot_axes, 'XGrid', 'on');
-        set(handles.xPlot_axes, 'YGrid', 'on');
         xlabel(handles.xPlot_axes, 'Frequency (Hz)');
         ylabel(handles.xPlot_axes, 'Magnitude');
     else
@@ -199,33 +211,34 @@ if ~(pausePlot)
             fIndex = 1;
         end
         plot(handles.xPlot_axes, time(fIndex:index), xData(fIndex:index), 'r');
-        set(handles.xPlot_axes, 'XGrid', 'on');
-        set(handles.xPlot_axes, 'YGrid', 'on');
         if fIndex > 1
-            axis(handles.xPlot_axes, [time(fIndex) now -2 2]);
+            axis(handles.xPlot_axes, [time(fIndex) current -2 2]);
             datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keeplimits', 'keepticks');
         else
             datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
         end
-        xlabel(handles.xPlot_axes, strcat('Time at ', {' '}, datestr(clock, 'dd-mmm-yyyy')));
+        xlabel(handles.xPlot_axes, 'Time (HH:MM:SS)');
         ylabel(handles.xPlot_axes, 'Magnitude');
     end
+    set(handles.xPlot_axes, 'XGrid', 'on');
+    set(handles.xPlot_axes, 'YGrid', 'on');
     drawnow;
 end
 
 %********************* DATA LOGGING ************************
-currentMinute = minute(now);
-if (~mod(currentMinute, 2) && currentMinute > lastLogMinute) %Log data every 2 minutes
+currentMinute = minute(current);
+if (~mod(currentMinute, 2) && currentMinute > lastLogMinute && floor(second(current)) == 0) %Log data every 2 minutes
     lastLogMinute = currentMinute;
+    %j = batch('CreateLogFile', 0, {time, xData, xData, xData, lastLog, index});
+    %CreateLogFile(time, xData, xData, xData, lastLog, index)
     %Create a file and store Data(lastLog:index)
-    logFile = fopen(strcat('Log\', datestr(time(lastLog), 'dd-mmm-yyyy HH.MM.SS'), '.log'), 'w+');
+    logFile = fopen(strcat('Log\', datestr(time(lastLog), 'yyyy-mmm-dd'), ' @', datestr(time(lastLog), 'HH.MM.SS'), '-', datestr(time(index-1), 'HH.MM.SS'),'.log'), 'w+');
     fprintf(logFile, 'Accelerometer Sensor Data:\r\n%s\r\n', datestr(now, 'dd-mmm-yyyy'));
     fprintf(logFile, 'Time\t\tX-Axis\t\tY-Axis\t\tZ-Axis\r\n');
-    for i = lastLog:index
+    for i = lastLog:(index-1)
         fprintf(logFile, '%s\t%f\r\n', datestr(time(i), 'HH:MM:SS.FFF'), xData(i));
     end
     fclose(logFile);
-
     lastLog = index;
 end
 
@@ -318,7 +331,7 @@ set(handles.timeFrame, 'Visible', 'off');
 % clear s;
 
 %Log the remaining data
-logFile = fopen(strcat('Log\', datestr(time(lastLog), 'dd-mmm-yyyy HH.MM.SS'), '.log'), 'w+');
+logFile = fopen(strcat('Log\', datestr(time(lastLog), 'yyyy-mmm-dd'), ' @', datestr(time(lastLog), 'HH.MM.SS'), '-', datestr(time(index-1), 'HH.MM.SS'),'.log'), 'w+');
 fprintf(logFile, 'Accelerometer Sensor Data:\r\n%s\r\n', datestr(now, 'dd-mmm-yyyy'));
 fprintf(logFile, 'Time\t\tX-Axis\t\tY-Axis\t\tZ-Axis\r\n');
 for i = lastLog:index
@@ -367,7 +380,7 @@ if (pausePlot && plotType)
     end
     plot(handles.xPlot_axes, time(fIndex:indexAtPause), xData(fIndex:indexAtPause), 'r');
     datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
-    xlabel(handles.xPlot_axes, strcat('Time at ', {' '}, datestr(clock, 'dd-mmm-yyyy')));
+    xlabel(handles.xPlot_axes, 'Time (HH:MM:SS)');
     ylabel(handles.xPlot_axes, 'Magnitude');
 end
 plotType = 0;
@@ -532,10 +545,10 @@ if ~failToRead
         %Time plot
         plot(handles.xPlot_axes, time, xData, 'r');
         datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
-        xlabel(handles.xPlot_axes, strcat('Time at ', {' '}, datestr(clock, 'dd-mmm-yyyy')));
+        xlabel(handles.xPlot_axes, 'Time (HH:MM:SS)');
         ylabel(handles.xPlot_axes, 'Magnitude');
     end
-    drawnow;
+    %drawnow;
 end
 %else throw an error message
 %msgbox('Cannot browse file on active connection!', 'Browsing Failed','error');

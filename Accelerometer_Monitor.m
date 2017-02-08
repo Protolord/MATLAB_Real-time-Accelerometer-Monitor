@@ -14,9 +14,12 @@ function varargout = Accelerometer_Monitor(varargin)
 % School of Electrical, Electronics and Computer Engineering
 
 %To do:
-% - Add clear current node channels button.
+% - Do actions for clear channel data.
+% - Do not rely on movegui, initially correctly place handles.mainFigure
+% from the start.
+% - Make handles.mainFigure uncontrollable until error msgbox is gone.
 
-% Last Modified by GUIDE v2.5 08-Feb-2017 16:41:19
+% Last Modified by GUIDE v2.5 09-Feb-2017 00:21:30
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -42,7 +45,6 @@ end
 %-------------------------------------------------------------------------%
 function Accelerometer_Monitor_OpeningFcn(hObject, eventdata, handles, varargin) %#ok<INUSL>
 %-------------------------------------------------------------------------%
-global channel;
 global plotType;
 global node;
 global tData;
@@ -51,12 +53,15 @@ global yData;
 global zData;
 global timeF;
 global timeL;
+global channel;
 global gmt;
+global writeAPI;
 global statusDisplay;
 global nodeDisplay;
+
 % Choose default command line output for Accelerometer_Monitor
 handles.output = hObject;
-datacursormode(handles.mainFigure, 'on')
+
 
 % Update handles structure
 guidata(hObject, handles);
@@ -67,29 +72,60 @@ guidata(hObject, handles);
 %Load Configuration.mat
 try
     load('Configuration.mat', 'timeF');
-    load('Configuration.mat', 'timeL');
-    load('Configuration.mat', 'channel');
-    load('Configuration.mat', 'gmt');
+    if isempty(timeF)
+        timeF = datenum('01-Jan-2017 00:00:01');
+    end
 catch
     timeF = datenum('01-Jan-2017 00:00:01');
+end
+try
+    load('Configuration.mat', 'timeL');
+    if isempty(timeL)
+        timeL = now;
+    end
+catch
     timeL = now;
+end
+try
+    load('Configuration.mat', 'channel');
+    if isempty(channel)
+        channel = zeros(3, 15);
+    end
+catch
     channel = zeros(3, 15);
+end
+try
+    load('Configuration.mat', 'gmt');
+    if isempty(gmt)
+        gmt = 0;
+    end
+catch
     gmt = 0;
 end
+try
+    load('Configuration.mat', 'writeAPI');
+    if isempty(writeAPI)
+        writeAPI = zeros(3, 15);
+    end
+catch
+    writeAPI = zeros(3, 15);
+end
+
 %GUI Handles Initial Properties
 set(handles.xPlot_axes,'xtick',[],'ytick',[]);
 set(handles.yPlot_axes,'xtick',[],'ytick',[]);
 set(handles.zPlot_axes,'xtick',[],'ytick',[]);
-set(handles.BTNReload, 'Visible', 'off');
-set(handles.BTNTimePlot, 'Visible', 'off');
-set(handles.BTNFreqPlot, 'Visible', 'off');
-set(handles.BTNSensorLeft, 'Visible', 'off');
-set(handles.BTNSensorRight, 'Visible', 'off');
+set(handles.BTN_Reload, 'Visible', 'off');
+set(handles.BTN_TimePlot, 'Visible', 'off');
+set(handles.BTN_FreqPlot, 'Visible', 'off');
+set(handles.BTN_SensorLeft, 'Visible', 'off');
+set(handles.BTN_SensorRight, 'Visible', 'off');
+set(handles.BTN_ClearChannels, 'Visible', 'off');
 %Initial plotting properties
 plotType = 0;
 statusDisplay = uicontrol(handles.mainFigure, 'Style', 'Text',...
                                               'String', 'No connection',...
-                                              'Position', [850 415 120 30],...
+                                              'Position', [845 410 130 40],...
                                               'FontSize', 13);     
 set(statusDisplay, 'Visible', 'on');
 nodeDisplay = uicontrol(handles.mainFigure, 'Style', 'Text',...
@@ -108,14 +144,46 @@ zData = zeros(3, 0);
 %-------------------------------------------------------------------------%
 function varargout = Accelerometer_Monitor_OutputFcn(hObject, eventdata, handles)  %#ok<INUSL>
 %-------------------------------------------------------------------------%
-
 % Get default command line output from handles structure
 varargout{1} = handles.output;
 movegui(handles.mainFigure, 'north');
+%Initially select Zoom toolbar button
+zoom(handles.mainFigure, 'on');
+
+% --- Executes when user attempts to close mainFigure.
+%-------------------------------------------------------------------------%
+function mainFigure_CloseRequestFcn(hObject, eventdata, handles) %#ok<INUSD,DEFNU>
+%-------------------------------------------------------------------------%
+global confirm;
+global timeConfig;
+global thingspeakConfig;
+if ishandle(confirm.fig)
+    close(confirm.fig);
+end
+if ishandle(timeConfig.fig)
+    close(timeConfig.fig);
+end
+if ishandle(thingspeakConfig.fig)
+    close(thingspeakConfig.fig);
+end
+delete(hObject);
 
 %==========================================================================
 %============================ CORE FUNCTIONS ==============================
 %==========================================================================
+function ClearAxes(handles)
+cla(handles.xPlot_axes);
+cla(handles.yPlot_axes);
+cla(handles.zPlot_axes);
+set(handles.xPlot_axes,'xtick',[],'ytick',[]);
+xlabel(handles.xPlot_axes, '');
+ylabel(handles.xPlot_axes, '');
+set(handles.yPlot_axes,'xtick',[],'ytick',[]);
+xlabel(handles.yPlot_axes, '');
+ylabel(handles.yPlot_axes, '');
+set(handles.zPlot_axes,'xtick',[],'ytick',[]);
+xlabel(handles.zPlot_axes, '');
+ylabel(handles.zPlot_axes, '');
 
 %-------------------------------------------------------------------------%
 function TimePlot(n, handles)
@@ -127,39 +195,35 @@ global xData;
 global yData;
 global zData;
 %Time plot  
-b = tData >= timeF & tData <= timeL;
-finder = find(b(n,:));
+b = tData(n,:) >= timeF & tData(n,:) <= timeL;
+finder = find(b);
 if isempty(finder)
-    cla(handles.xPlot_axes);
-    cla(handles.yPlot_axes);
-    cla(handles.zPlot_axes);
-    set(handles.xPlot_axes,'xtick',[],'ytick',[]);
-    set(handles.yPlot_axes,'xtick',[],'ytick',[]);
-    set(handles.zPlot_axes,'xtick',[],'ytick',[]);
-    msgbox(horzcat('No data found on Node ', int2str(n), '!'), 'No Data', 'error');
-else
-    f = finder(1);
-    l = finder(end);
-    plot(handles.xPlot_axes, tData(n,f:l), xData(n,f:l)/255, 'r');
-    plot(handles.yPlot_axes, tData(n,f:l), yData(n,f:l)/255, 'g');
-    plot(handles.zPlot_axes, tData(n,f:l), zData(n,f:l)/255, 'b');
-    datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
-    datetick(handles.yPlot_axes, 'x','HH:MM:SS', 'keepticks');
-    datetick(handles.zPlot_axes, 'x','HH:MM:SS', 'keepticks');
-    xlabel(handles.xPlot_axes, 'Time (HH:MM:SS)');
-    ylabel(handles.xPlot_axes, 'Magnitude (g)');
-    xlabel(handles.yPlot_axes, 'Time (HH:MM:SS)');
-    ylabel(handles.yPlot_axes, 'Magnitude (g)');
-    xlabel(handles.zPlot_axes, 'Time (HH:MM:SS)');
-    ylabel(handles.zPlot_axes, 'Magnitude (g)');
-    set(handles.xPlot_axes, 'XGrid', 'on');
-    set(handles.xPlot_axes, 'YGrid', 'on');
-    set(handles.yPlot_axes, 'XGrid', 'on');
-    set(handles.yPlot_axes, 'YGrid', 'on');
-    set(handles.zPlot_axes, 'XGrid', 'on');
-    set(handles.zPlot_axes, 'YGrid', 'on');
-    drawnow;
+    ClearAxes(handles);
+    msgbox('No Data Found!', 'No Data', 'error');
+    return;
 end
+f = finder(1);
+l = finder(end);
+plot(handles.xPlot_axes, tData(n,f:l), xData(n,f:l)/255, 'r');
+plot(handles.yPlot_axes, tData(n,f:l), yData(n,f:l)/255, 'g');
+plot(handles.zPlot_axes, tData(n,f:l), zData(n,f:l)/255, 'b');
+datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
+datetick(handles.yPlot_axes, 'x','HH:MM:SS', 'keepticks');
+datetick(handles.zPlot_axes, 'x','HH:MM:SS', 'keepticks');
+xlabel(handles.xPlot_axes, 'Time (HH:MM:SS)');
+ylabel(handles.xPlot_axes, 'Magnitude (g)');
+xlabel(handles.yPlot_axes, 'Time (HH:MM:SS)');
+ylabel(handles.yPlot_axes, 'Magnitude (g)');
+xlabel(handles.zPlot_axes, 'Time (HH:MM:SS)');
+ylabel(handles.zPlot_axes, 'Magnitude (g)');
+set(handles.xPlot_axes, 'XGrid', 'on');
+set(handles.xPlot_axes, 'YGrid', 'on');
+set(handles.yPlot_axes, 'XGrid', 'on');
+set(handles.yPlot_axes, 'YGrid', 'on');
+set(handles.zPlot_axes, 'XGrid', 'on');
+set(handles.zPlot_axes, 'YGrid', 'on');
+drawnow;
+
 
 %-------------------------------------------------------------------------%
 function FreqPlot(n, handles)
@@ -172,81 +236,76 @@ global yData;
 global zData;
 %Time plot  
 b = tData(n,:) >= timeF & tData(n,:) <= timeL;
-finder = find(b(n,:));
+finder = find(b);
 if isempty(finder)
-    cla(handles.xPlot_axes);
-    cla(handles.yPlot_axes);
-    cla(handles.zPlot_axes);
-    set(handles.xPlot_axes,'xtick',[],'ytick',[]);
-    set(handles.yPlot_axes,'xtick',[],'ytick',[]);
-    set(handles.zPlot_axes,'xtick',[],'ytick',[]);
+    ClearAxes(handles);
     msgbox('No Data Found!', 'No Data', 'error');
-else
-    f = finder(1);
-    l = finder(end);
-    L = length(finder);
-    peaksNum = 6;
-    %X
-    y = xData(n,f:l)/255;
-    [psd, fs] = periodogram(y - mean(y), [], [], L);
-    fs = 25*fs/fs(end);
-    [pks, locs] = findpeaks(psd, fs, 'SortStr', 'descend');
-    last = min(peaksNum, length(pks));
-    plot(handles.xPlot_axes, fs, psd, 'r');
-    hold(handles.xPlot_axes, 'on')
-    for i = 1:last
-        text(handles.xPlot_axes, locs(i), pks(i), horzcat('  P', num2str(i)), 'FontSize', 8, 'Clipping', 'on');
-        plot(handles.xPlot_axes, locs(i), pks(i), '*');
-    end
-    hold(handles.xPlot_axes, 'off')
-    xlim(handles.xPlot_axes, [0 25]);
-    ylim(handles.xPlot_axes, [0 1.1*pks(1)]);
-    %Y
-    y = yData(n,f:l)/255;
-    [psd, fs] = periodogram(y - mean(y), [], [], L);
-    fs = 25*fs/fs(end);
-    [pks, locs] = findpeaks(psd, fs, 'SortStr', 'descend');
-    last = min(peaksNum, length(pks));
-    plot(handles.yPlot_axes, fs, psd, 'g');
-    hold(handles.yPlot_axes, 'on')
-    for i = 1:last
-        text(handles.yPlot_axes, locs(i), pks(i), horzcat('  P', num2str(i)), 'FontSize', 8, 'Clipping', 'on');
-        plot(handles.yPlot_axes, locs(i), pks(i), '*');
-    end
-    hold(handles.yPlot_axes, 'off')
-    xlim(handles.yPlot_axes, [0 25]);
-    ylim(handles.yPlot_axes, [0 1.1*pks(1)]);
-    %Z
-    y = zData(n,f:l)/255;
-    [psd, fs] = periodogram(y - mean(y), [], [], L);
-    fs = 25*fs/fs(end);
-    [pks, locs] = findpeaks(psd, fs, 'SortStr', 'descend');
-    last = min(peaksNum, length(pks));
-    plot(handles.zPlot_axes, fs, psd, 'b');
-    hold(handles.zPlot_axes, 'on')
-    for i = 1:last
-        text(handles.zPlot_axes, locs(i), pks(i), horzcat('  P', num2str(i)), 'FontSize', 8, 'Clipping', 'on');
-        plot(handles.zPlot_axes, locs(i), pks(i), '*');
-    end
-    hold(handles.zPlot_axes, 'off')
-    xlim(handles.zPlot_axes, [0 25]);
-    ylim(handles.zPlot_axes, [0 1.1*pks(1)]);
-    
-    %-------------------------------------
-    set(handles.xPlot_axes, 'XGrid', 'on');
-    set(handles.xPlot_axes, 'YGrid', 'on');
-    set(handles.yPlot_axes, 'XGrid', 'on');
-    set(handles.yPlot_axes, 'YGrid', 'on');
-    set(handles.zPlot_axes, 'XGrid', 'on');
-    set(handles.zPlot_axes, 'YGrid', 'on');
-    xlabel(handles.xPlot_axes, 'Frequency (Hz)');
-    ylabel(handles.xPlot_axes, 'Magnitude (g^2)');
-    xlabel(handles.yPlot_axes, 'Frequency (Hz)');
-    ylabel(handles.yPlot_axes, 'Magnitude (g^2)');
-    xlabel(handles.zPlot_axes, 'Frequency (Hz)');
-    ylabel(handles.zPlot_axes, 'Magnitude (g^2)');
-    drawnow;
+    return;
 end
+f = finder(1);
+l = finder(end);
+L = length(finder);
+peaksNum = 6;
+%X
+y = xData(n,f:l)/255;
+[psd, fs] = periodogram(y - mean(y), [], [], L);
+fs = 25*fs/fs(end);
+[pks, locs] = findpeaks(psd, fs, 'SortStr', 'descend');
+last = min(peaksNum, length(pks));
+plot(handles.xPlot_axes, fs, psd, 'r');
+hold(handles.xPlot_axes, 'on')
+for i = 1:last
+    text(handles.xPlot_axes, locs(i), pks(i), horzcat('  P', num2str(i)), 'FontSize', 8, 'Clipping', 'on');
+    plot(handles.xPlot_axes, locs(i), pks(i), '*');
+end
+hold(handles.xPlot_axes, 'off')
+xlim(handles.xPlot_axes, [0 25]);
+ylim(handles.xPlot_axes, [0 1.1*pks(1)]);
+%Y
+y = yData(n,f:l)/255;
+[psd, fs] = periodogram(y - mean(y), [], [], L);
+fs = 25*fs/fs(end);
+[pks, locs] = findpeaks(psd, fs, 'SortStr', 'descend');
+last = min(peaksNum, length(pks));
+plot(handles.yPlot_axes, fs, psd, 'g');
+hold(handles.yPlot_axes, 'on')
+for i = 1:last
+    text(handles.yPlot_axes, locs(i), pks(i), horzcat('  P', num2str(i)), 'FontSize', 8, 'Clipping', 'on');
+    plot(handles.yPlot_axes, locs(i), pks(i), '*');
+end
+hold(handles.yPlot_axes, 'off')
+xlim(handles.yPlot_axes, [0 25]);
+ylim(handles.yPlot_axes, [0 1.1*pks(1)]);
+%Z
+y = zData(n,f:l)/255;
+[psd, fs] = periodogram(y - mean(y), [], [], L);
+fs = 25*fs/fs(end);
+[pks, locs] = findpeaks(psd, fs, 'SortStr', 'descend');
+last = min(peaksNum, length(pks));
+plot(handles.zPlot_axes, fs, psd, 'b');
+hold(handles.zPlot_axes, 'on')
+for i = 1:last
+    text(handles.zPlot_axes, locs(i), pks(i), horzcat('  P', num2str(i)), 'FontSize', 8, 'Clipping', 'on');
+    plot(handles.zPlot_axes, locs(i), pks(i), '*');
+end
+hold(handles.zPlot_axes, 'off')
+xlim(handles.zPlot_axes, [0 25]);
+ylim(handles.zPlot_axes, [0 1.1*pks(1)]);
+
+%-------------------------------------
+set(handles.xPlot_axes, 'XGrid', 'on');
+set(handles.xPlot_axes, 'YGrid', 'on');
+set(handles.yPlot_axes, 'XGrid', 'on');
+set(handles.yPlot_axes, 'YGrid', 'on');
+set(handles.zPlot_axes, 'XGrid', 'on');
+set(handles.zPlot_axes, 'YGrid', 'on');
+xlabel(handles.xPlot_axes, 'Frequency (Hz)');
+ylabel(handles.xPlot_axes, 'Magnitude (g^2)');
+xlabel(handles.yPlot_axes, 'Frequency (Hz)');
+ylabel(handles.yPlot_axes, 'Magnitude (g^2)');
+xlabel(handles.zPlot_axes, 'Frequency (Hz)');
+ylabel(handles.zPlot_axes, 'Magnitude (g^2)');
+drawnow;
 
 %-------------------------------------------------------------------------%
 function x = UpdateData(n, handles)
@@ -397,13 +456,14 @@ end
 %=========================== BUTTON CALLBACKS =============================
 %==========================================================================
 
-% --- Executes on button press in BTNConnect.
+% --- Executes on button press in BTN_Connect.
 %-------------------------------------------------------------------------%
-function BTNConnect_Callback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
+function BTN_Connect_Callback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
 %-------------------------------------------------------------------------%
 global node;
 global nodeDisplay;
 global statusDisplay;
+set(handles.BTN_Connect, 'Visible', 'off');
 %Status Bar
 counter = 0;
 tf = false;
@@ -435,6 +495,7 @@ if (~tf)
     set(statusDisplay, 'String', 'No Connection', 'Fontsize', 12);
     msgbox('Cannot connect to ThingSpeak Server', 'Connection Timeout', 'error');
     beep;
+    set(handles.BTN_Connect, 'Visible', 'on');
     return;
 end
 if ishandle(wb)
@@ -448,7 +509,7 @@ end
 
 proceed = true;
 %Web scrapping
-for n = 1:1 %3
+for n = 1:1 % Can be changed depending on how many should be initialized
     proceed = UpdateData(n, handles);
     if ~proceed
         break;
@@ -463,34 +524,34 @@ if proceed
     set(nodeDisplay, 'String', 'Node 1');
 
     %GUI Handles manipulation
-    set(handles.BTNReload, 'Visible', 'on');
-    set(handles.BTNConnect, 'Visible', 'off');
-    set(handles.BTNFreqPlot, 'Visible', 'on');
-    set(handles.BTNSensorLeft, 'Visible', 'on');
-    set(handles.BTNSensorRight, 'Visible', 'on');
-    set(handles.uipushtoolsave, 'Visible', 'on');
+    set(handles.BTN_Reload, 'Visible', 'on');
+    set(handles.BTN_FreqPlot, 'Visible', 'on');
+    set(handles.BTN_SensorLeft, 'Visible', 'on');
+    set(handles.BTN_SensorRight, 'Visible', 'on');
+    set(handles.BTN_ClearChannels, 'Visible', 'on');
+    set(handles.TBB_Save, 'Visible', 'on');
     %Plot default node
     TimePlot(node, handles);
 end
 
-% --- Executes on button press in BTNReload.
+% --- Executes on button press in BTN_Reload.
 %-------------------------------------------------------------------------%
-function BTNReload_Callback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
+function BTN_Reload_Callback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
 %-------------------------------------------------------------------------%
 global node;
 UpdateData(node, handles);
 RefreshPlot(handles);
 
 
-% --- Executes on button press in BTNTimePlot.
+% --- Executes on button press in BTN_TimePlot.
 %-------------------------------------------------------------------------%
-function BTNTimePlot_Callback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
+function BTN_TimePlot_Callback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
 %-------------------------------------------------------------------------%
 global plotType;
 global node;
 %GUI Handles manipulation
-set(handles.BTNTimePlot, 'Visible', 'off');
-set(handles.BTNFreqPlot, 'Visible', 'on');
+set(handles.BTN_TimePlot, 'Visible', 'off');
+set(handles.BTN_FreqPlot, 'Visible', 'on');
 %If the plotting is paused and the plot type is in frequency domain
 if (plotType)
     TimePlot(node, handles);
@@ -498,15 +559,15 @@ if (plotType)
 end
 
 
-% --- Executes on button press in BTNFreqPlot.
+% --- Executes on button press in BTN_FreqPlot.
 %-------------------------------------------------------------------------%
-function BTNFreqPlot_Callback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
+function BTN_FreqPlot_Callback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
 %-------------------------------------------------------------------------%
 global plotType;
 global node;
 %GUI Handles manipulation
-set(handles.BTNTimePlot, 'Visible', 'on');
-set(handles.BTNFreqPlot, 'Visible', 'off');
+set(handles.BTN_TimePlot, 'Visible', 'on');
+set(handles.BTN_FreqPlot, 'Visible', 'off');
 %If the plot type is in time domain
 if (~plotType)
     FreqPlot(node, handles);
@@ -514,189 +575,302 @@ if (~plotType)
 end
 
 
-% --- Executes on button press in Refresh.
+% --- Executes on button press in BTN_Refresh.
 %-------------------------------------------------------------------------%
-function Refresh_Callback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
+function BTN_Refresh_Callback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
 %-------------------------------------------------------------------------%
 RefreshPlot(handles);
 
-% --- Executes on button press in BTNSensorLeft.
+% --- Executes on button press in BTN_SensorLeft.
 %-------------------------------------------------------------------------%
-function BTNSensorLeft_Callback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
+function BTN_SensorLeft_Callback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
 %-------------------------------------------------------------------------%
 global node;
 global nodeDisplay;
 node = node - 1;
-if node == 0
+if node < 1
     node = 3;
 end
 set(nodeDisplay, 'String', horzcat('Node ', int2str(node)));
 RefreshPlot(handles);
 
-% --- Executes on button press in BTNSensorRight.
+% --- Executes on button press in BTN_SensorRight.
 %-------------------------------------------------------------------------%
-function BTNSensorRight_Callback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
+function BTN_SensorRight_Callback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
 %-------------------------------------------------------------------------%
 global node;
 global nodeDisplay;
 node = node + 1;
-if node == 4
+if node > 3
     node = 1;
 end
 set(nodeDisplay, 'String', horzcat('Node ', int2str(node)));
 RefreshPlot(handles);
 
 %-------------------------------------------------------------------------%
-function SaveConfig(varargin)
+function SaveTimeConfig(varargin)
 %-------------------------------------------------------------------------%
+global timeConfig;
 global timeF;
 global timeL;
-global channel;
-global config;
 global gmt;
-timeF = datenum(get(config.in_from, 'String'));
-timeL = datenum(get(config.in_to, 'String'));
-gmt = str2double(get(config.in_gmt, 'String'));
-for n = 1:3
-    for i = 1:15
-        channel(n,i) = str2double(get(config.ch(n,i), 'String'));
-    end
-end
+timeF = datenum(get(timeConfig.in_from, 'String'));
+timeL = datenum(get(timeConfig.in_to, 'String'));
+gmt = str2double(get(timeConfig.in_gmt, 'String'));
 save('Configuration.mat', 'timeF');
 save('Configuration.mat', 'timeL', '-append');
-save('Configuration.mat', 'channel', '-append');
 save('Configuration.mat', 'gmt', '-append');
-close(config.fig);
+close(timeConfig.fig);
 
-% --- Executes on button press in BTNConfig.
 %-------------------------------------------------------------------------%
-function BTNConfig_Callback(hObject, eventdata, handles) %#ok<INUSD,DEFNU>
+function SaveThingSpeakConfig(varargin)
 %-------------------------------------------------------------------------%
-global timeF;
-global timeL;
+global thingspeakConfig;
 global channel;
-global gmt;
-global config;
-
-% Read saved configuration
-config.fig = figure('Position',[300 100 700 500],...
-                    'MenuBar', 'None',...
-                    'Numbertitle','Off',...
-                    'Name','Configuration',...
-                    'Resize','off');
-config.save = uicontrol('Style','Push',...
-                        'Position',[25 15 650 40],...
-                        'Fontsize',12,...
-                        'String','Save',...
-                        'Callback',@SaveConfig);
-config.stc_timeFrame = uicontrol('Style', 'Text',...
-                                 'Position', [280 470 150 30],...
-                                 'Fontsize', 16,...
-                                 'FontWeight', 'Bold',...
-                                 'String', 'Time Frame');
-config.stc_from = uicontrol('Style', 'Text',...
-                            'Position', [5 425 120 30],...
-                            'Fontsize', 13,...
-                            'String', 'From: ');
-config.stc_to = uicontrol('Style', 'Text',...
-                          'Position', [250 425 120 30],...
-                          'Fontsize', 13,...
-                          'String', 'To: ');
-config.stc_gmt = uicontrol('Style', 'Text',...
-                           'Position', [480 425 150 30],...
-                           'Fontsize', 13,...
-                           'String', 'GMT:');
-config.in_from = uicontrol('Style', 'Edit',...
-                           'Position', [90 430 175 30],...
-                           'Fontsize', 13,...
-                           'String', datestr(timeF));
-config.in_to = uicontrol('Style', 'Edit',...
-                         'Position', [330 430 175 30],...
-                         'Fontsize', 13,...
-                         'String', datestr(timeL));
-config.in_gmt = uicontrol('Style', 'Edit',...
-                          'Position', [580 430 50 30],...
-                          'Fontsize', 13,...
-                          'String', int2str(gmt));
-config.stc_sensorData = uicontrol('Style', 'Text',...
-                                  'Position', [280 380 150 30],...
-                                  'Fontsize', 16,...
-                                  'FontWeight', 'Bold',...
-                                  'String', 'Sensor Data');
-config.stc_sensor1 = uicontrol('Style', 'Text',...
-                               'Position', [50 350 150 30],...
-                               'Fontsize', 13,...
-                               'String', 'Node 1');
-config.stc_sensor2 = uicontrol('Style', 'Text',...
-                               'Position', [275 350 150 30],...
-                               'Fontsize', 13,...
-                               'String', 'Node 2');
-config.stc_sensor3 = uicontrol('Style', 'Text',...
-                               'Position', [500 350 150 30],...
-                               'Fontsize', 13,...
-                               'String', 'Node 3');
+global writeAPI;
 for n = 1:3
     for i = 1:15
-        if i > 8
-            config.ch(n,i) = uicontrol('Style', 'Edit',...
-                                       'Position', [(120 + 240*(n - 1)) (640 - 35*i) 100 30],...
-                                       'Fontsize', 12,...
-                                       'String', channel(n,i));
-        else
-            config.ch(n,i) = uicontrol('Style', 'Edit',...
-                                       'Position', [(10 + 240*(n - 1)) (360 - 35*i) 100 30],...
-                                       'Fontsize', 12,...
-                                       'String', channel(n,i));
-        end
+        channel(n,i) = str2double(get(thingspeakConfig.ch(n,i), 'String'));
+        writeAPI(n,i) = str2double(get(thingspeakConfig.api(n,i), 'String'));
     end
 end
+save('Configuration.mat', 'channel', '-append');
+save('Configuration.mat', 'writeAPI', '-append');
+close(thingspeakConfig.fig);
 
-
-% --------------------------------------------------------------------
-function uipushtoolsave_ClickedCallback(hObject, eventdata, handles) %#ok<INUSD,DEFNU>
+% --- Executes on button press in TBB_Save_ClickedCallback.
+%-------------------------------------------------------------------------%
+function TBB_Save_ClickedCallback(hObject, eventdata, handles) %#ok<INUSD,DEFNU>
+%-------------------------------------------------------------------------%
 global tData; %#ok<NUSED>
 global xData; %#ok<NUSED>
 global yData; %#ok<NUSED>
 global zData; %#ok<NUSED>
 [file,path] = uiputfile('*.mat','Save Data');
 complete = horzcat(path, file);
-save(complete, 'tData');
-save(complete, 'xData', '-append');
-save(complete, 'yData', '-append');
-save(complete, 'zData', '-append');
+if complete(1) ~= 0 && complete(2) ~= 0
+    save(complete, 'tData');
+    save(complete, 'xData', '-append');
+    save(complete, 'yData', '-append');
+    save(complete, 'zData', '-append');
+end
 
-% --------------------------------------------------------------------
-function uipushtoolopen_ClickedCallback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
+
+% --- Executes on button press in TBB_Load_ClickedCallback.
+%-------------------------------------------------------------------------%
+function TBB_Load_ClickedCallback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
+%-------------------------------------------------------------------------%
 global tData;
 global xData;
 global yData;
 global zData;
 global node;
 global nodeDisplay;
+global statusDisplay;
 [file,path] = uigetfile('*.mat','Load Data');
 complete = horzcat(path, file);
-try
-    load(complete, 'tData');
-    load(complete, 'xData');
-    load(complete, 'yData');
-    load(complete, 'zData');
-    %Default node
-    node = 1; 
-    %Static text handles
-    set(nodeDisplay, 'Visible', 'on');
-    set(nodeDisplay, 'String', 'Node 1');
+if complete(1) ~= 0 && complete(2) ~= 0
+    try
+        load(complete, 'tData');
+        load(complete, 'xData');
+        load(complete, 'yData');
+        load(complete, 'zData');
+        %Default node
+        node = 1; 
+        %Static text handles
+        set(nodeDisplay, 'Visible', 'on');
+        set(nodeDisplay, 'String', 'Node 1');
 
-    %GUI Handles manipulation
-    set(handles.BTNReload, 'Visible', 'on');
-    set(handles.BTNConnect, 'Visible', 'off');
-    set(handles.BTNFreqPlot, 'Visible', 'on');
-    set(handles.BTNSensorLeft, 'Visible', 'on');
-    set(handles.BTNSensorRight, 'Visible', 'on');
-    set(handles.uipushtoolsave, 'Visible', 'on');
-catch
-    tData = zeros(3, 1);
-    xData = zeros(3, 1);
-    yData = zeros(3, 1);
-    zData = zeros(3, 1);
+        %GUI Handles manipulation
+        set(handles.BTN_FreqPlot, 'Visible', 'on');
+        set(handles.BTN_SensorLeft, 'Visible', 'on');
+        set(handles.BTN_SensorRight, 'Visible', 'on');
+        set(handles.TBB_Save, 'Visible', 'on');
+        set(handles.BTN_ClearChannels, 'Visible', 'on');
+    catch
+        tData = zeros(3, 1);
+        xData = zeros(3, 1);
+        yData = zeros(3, 1);
+        zData = zeros(3, 1);
+    end
+    set(statusDisplay, 'String', horzcat('Loaded ', file), 'Fontsize', 12 - length(file)/6);
+    RefreshPlot(handles);
 end
-RefreshPlot(handles);
+
+% --- Executes on button press in TBB_TimeConfig_ClickedCallback.
+%-------------------------------------------------------------------------%
+function TBB_TimeConfig_ClickedCallback(hObject, eventdata, handles) %#ok<INUSD,DEFNU>
+%-------------------------------------------------------------------------%
+global timeConfig;
+global timeF;
+global timeL;
+global gmt;
+
+timeConfig.fig = figure(...
+    'Position',[300 500 700 150],...
+    'MenuBar', 'None',...
+    'Numbertitle','Off',...
+    'Name','Time Settings',...
+    'Resize','off');
+timeConfig.save = uicontrol(...
+    'Style','Push',...
+    'Position',[15 15 670 40],...
+    'Fontsize',12,...
+    'String','Save',...
+    'Callback',@SaveTimeConfig);
+timeConfig.panel_timeFrame = uipanel(...
+    'Title', 'Time Frame',...
+    'Units', 'Pixels',...;
+    'FontSize', 14,...
+    'TitlePosition', 'centertop',...
+    'Position', [20 60 550 90]);
+timeConfig.stc_from = uicontrol(...
+    'Style', 'Text',...
+    'Position', [25 75 50 30],...
+    'Fontsize', 13,...
+    'String', 'From: ');
+timeConfig.stc_to = uicontrol(...
+    'Style', 'Text',...
+    'Position', [300 75 60 30],...
+    'Fontsize', 13,...
+    'String', 'To: ');
+timeConfig.stc_gmt = uicontrol(...
+    'Style', 'Text',...
+    'Position', [575 75 50 30],...
+    'Fontsize', 13,...
+    'String', 'GMT:');
+timeConfig.in_from = uicontrol(...
+    'Style', 'Edit',...
+    'Position', [75 80 200 30],...
+    'Fontsize', 13,...
+    'String', datestr(timeF));
+timeConfig.in_to = uicontrol(...
+    'Style', 'Edit',...
+    'Position', [350 80 200 30],...
+    'Fontsize', 13,...
+    'String', datestr(timeL));
+timeConfig.in_gmt = uicontrol(...
+    'Style', 'Edit',...
+    'Position', [625 80 50 30],...
+    'Fontsize', 13,...
+    'String', int2str(gmt));
+
+% --- Executes on button press in TBB_ThingSpeakConfig_ClickedCallback.
+%-------------------------------------------------------------------------%
+function TBB_ThingSpeakConfig_ClickedCallback(hObject, eventdata, handles) %#ok<INUSD,DEFNU>
+%-------------------------------------------------------------------------%
+global thingspeakConfig;
+global channel;
+global writeAPI;
+
+thingspeakConfig.fig = figure(...
+    'Position',[300 60 710 675],...
+    'MenuBar', 'None',...
+    'Numbertitle','Off',...
+    'Name','ThingSpeak Settings',...
+    'Resize','off');
+thingspeakConfig.save = uicontrol(...
+    'Style','Push',...
+    'Position',[30 5 655 30],...
+    'Fontsize',12,...
+    'String','Save',...
+    'Callback',@SaveThingSpeakConfig);
+for n = 1:3
+    thingspeakConfig.panel_node(n) = uipanel(...
+        'Title', horzcat('Node ', num2str(n)),...
+        'Units', 'Pixels',...;
+        'FontSize', 14,...
+        'TitlePosition', 'centertop',...
+        'Position', [(5 + 235*(n-1)) 37.5 225 640]);
+    thingspeakConfig.stc_channel(n) = uicontrol(...
+        'Style', 'Text',...
+        'Position', [(50 + 235*(n-1)) 622.5 150 30],...
+        'Fontsize', 12,...
+        'String', 'Channels');
+    thingspeakConfig.stc_apiKeys(n) = uicontrol(...
+        'Style', 'Text',...
+        'Position', [(50 + 235*(n-1)) 315 150 30],...
+        'Fontsize', 12,...
+        'String', 'Write API Keys');
+    for i = 1:15
+        if i > 8
+            thingspeakConfig.ch(n,i) = uicontrol(...
+                'Style', 'Edit',...
+                'Position', [(120 + 235*(n - 1)) (910 - 35*i) 100 30],...
+                'Fontsize', 12,...
+                'String', num2str(channel(n,i)));
+            thingspeakConfig.api(n,i) = uicontrol(...
+                'Style', 'Edit',...
+                'Position', [(120 + 235*(n - 1)) (605 - 35*i) 100 30],...
+                'Fontsize', 12,...
+                'String', num2str(writeAPI(n,i)));
+        else
+            thingspeakConfig.ch(n,i) = uicontrol(...
+                'Style', 'Edit',...
+                'Position', [(15 + 235*(n - 1)) (630 - 35*i) 100 30],...
+                'Fontsize', 12,...
+                'String', num2str(channel(n,i)));
+            thingspeakConfig.api(n,i) = uicontrol(...
+                'Style', 'Edit',...
+                'Position', [(15 + 235*(n - 1)) (325 - 35*i) 100 30],...
+                'Fontsize', 12,...
+                'String', num2str(writeAPI(n,i)));                   
+        end
+    end
+end
+
+%-------------------------------------------------------------------------%
+function ClearChannels(varargin)
+%-------------------------------------------------------------------------%
+global node;
+global confirm;
+global writeAPI;
+close(confirm.fig);
+wb = waitbar(0, horzcat('Clearing Node ', num2str(node), ' channels'));
+for i=1:15
+    pause(0.25);
+    percent = i/15;
+    waitbar(percent, wb, horzcat('Clearing Node ', num2str(node), ' channels (', num2str(100*percent, 3), '%)'));
+end
+pause(0.1);
+if ishandle(wb)
+    delete(wb);
+end
+
+%-------------------------------------------------------------------------%
+function NotClearChannels(varargin)
+%-------------------------------------------------------------------------%
+global confirm;
+close(confirm.fig);
+
+% --- Executes on button press in BTN_ClearChannels.
+%-------------------------------------------------------------------------%
+function BTN_ClearChannels_Callback(hObject, eventdata, handles) %#ok<INUSD,DEFNU>
+%-------------------------------------------------------------------------%
+global node;
+global confirm;
+beep;
+confirm.fig = figure(...
+    'Position',[500 400 300 150],...
+    'MenuBar', 'None',...
+    'Numbertitle','Off',...
+    'Name','Clear Channel Data',...
+    'Resize','off');
+confirm.stc_question = uicontrol(...
+    'Style', 'Text',...
+    'Position', [25 0 250 125],...
+    'Fontsize', 12,...
+    'String', horzcat('Are you sure you want to clear all channel data for Node ', num2str(node), '?'));
+confirm.yes = uicontrol(...
+    'Style','Push',...
+    'Position',[15 15 125 40],...
+    'Fontsize',12,...
+    'String','Yes',...
+    'Callback',@ClearChannels);
+confirm.no = uicontrol(...
+    'Style','Push',...
+    'Position',[160 15 125 40],...
+    'Fontsize',12,...
+    'String','No',...
+    'Callback',@NotClearChannels);
+

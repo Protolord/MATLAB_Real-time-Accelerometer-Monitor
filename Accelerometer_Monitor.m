@@ -14,12 +14,12 @@ function varargout = Accelerometer_Monitor(varargin)
 % School of Electrical, Electronics and Computer Engineering
 
 %To do:
-% - Do actions for clear channel data.
-% - Do not rely on movegui, initially correctly place handles.mainFigure
-% from the start.
-% - Make handles.mainFigure uncontrollable until error msgbox is gone.
+% - Make channel clearing autonomous instead of redirecting to ThingSpeak
+% login page.
+% - Pressing 'Enter' in settings should be equivalent to clicking Save
+% button.
 
-% Last Modified by GUIDE v2.5 09-Feb-2017 00:21:30
+% Last Modified by GUIDE v2.5 12-Feb-2017 02:45:39
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -57,9 +57,6 @@ global channel;
 global gmt;
 global statusDisplay;
 global nodeDisplay;
-global enabled;
-
-enabled = 'on';
 
 % Choose default command line output for Accelerometer_Monitor
 handles.output = hObject;
@@ -145,21 +142,11 @@ movegui(handles.mainFigure, 'north');
 %Initially select Zoom toolbar button
 zoom(handles.mainFigure, 'on');
 
-% --- Executes when user attempts to close mainFigure.
-%-------------------------------------------------------------------------%
-function mainFigure_CloseRequestFcn(hObject, eventdata, handles) %#ok<INUSD,DEFNU>
-%-------------------------------------------------------------------------%
-global enabled;
-if strcmp(enabled, 'on')
-    delete(hObject);
-end
 
 %-------------------------------------------------------------------------%
 function FigureEnable(handles, flag)
 %-------------------------------------------------------------------------%
-global enabled;
 global statusDisplay;
-enabled = flag;
 set(handles.BTN_Connect, 'Enable', flag);
 set(handles.BTN_Reload, 'Enable', flag);
 set(handles.BTN_Refresh, 'Enable', flag);
@@ -219,22 +206,65 @@ ClearAxes(handles);
 b = tData(n,:) >= timeF & tData(n,:) <= timeL;
 finder = find(b);
 if isempty(finder)
-    msgbox('No Data Found!', 'No Data', 'error');
+    errordlg('No Data Found!', 'No Data', 'modal');
     return;
 end
 f = finder(1);
 l = finder(end);
+xmin = min(xData(n,f:l))/255;
+ymin = min(yData(n,f:l))/255;
+zmin = min(zData(n,f:l))/255;
+xmax = max(xData(n,f:l))/255;
+ymax = max(yData(n,f:l))/255;
+zmax = max(zData(n,f:l))/255;
+tdiff = max(tData(n,l)) - min(tData(n,f));
+xdiff = xmax - xmin;
+ydiff = ymax - ymin;
+zdiff = zmax - zmin;
 plot(handles.xPlot_axes, tData(n,f:l), xData(n,f:l)/255, 'r');
 plot(handles.yPlot_axes, tData(n,f:l), yData(n,f:l)/255, 'g');
 plot(handles.zPlot_axes, tData(n,f:l), zData(n,f:l)/255, 'b');
-datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
-datetick(handles.yPlot_axes, 'x','HH:MM:SS', 'keepticks');
-datetick(handles.zPlot_axes, 'x','HH:MM:SS', 'keepticks');
-xlabel(handles.xPlot_axes, 'Time (HH:MM:SS)');
+xlim(handles.xPlot_axes, [tData(n,f) tData(n,l)]);
+ylim(handles.xPlot_axes, [xmin-0.2*xdiff xmax+0.2*xdiff]);
+xlim(handles.yPlot_axes, [tData(n,f) tData(n,l)]);
+ylim(handles.yPlot_axes, [ymin-0.2*ydiff ymax+0.2*ydiff]);
+xlim(handles.zPlot_axes, [tData(n,f) tData(n,l)]);
+ylim(handles.zPlot_axes, [zmin-0.2*zdiff zmax+0.2*zdiff]);
+%Change time limits based on min and max tData
+%Less than 3 seconds
+if tdiff < 3*1.157412771135569e-05
+    d = datestr(tData(n,f), 'mmm-dd');
+    datetick(handles.xPlot_axes, 'x','HH:MM:SS.FFF', 'keepticks');
+    datetick(handles.yPlot_axes, 'x','HH:MM:SS.FFF', 'keepticks');
+    datetick(handles.zPlot_axes, 'x','HH:MM:SS.FFF', 'keepticks');
+    xlabel(handles.xPlot_axes, horzcat(d, ' Time (HH:MM:SS.FFF)'));
+    xlabel(handles.yPlot_axes, horzcat(d, ' Time (HH:MM:SS.FFF)'));
+    xlabel(handles.zPlot_axes, horzcat(d, ' Time (HH:MM:SS.FFF)'));
+elseif tdiff < 1
+    d = datestr(tData(n,f), 'mmm-dd');
+    datetick(handles.xPlot_axes, 'x','HH:MM:SS', 'keepticks');
+    datetick(handles.yPlot_axes, 'x','HH:MM:SS', 'keepticks');
+    datetick(handles.zPlot_axes, 'x','HH:MM:SS', 'keepticks');
+    xlabel(handles.xPlot_axes, horzcat(d, ' Time (HH:MM:SS)'));
+    xlabel(handles.yPlot_axes, horzcat(d, ' Time (HH:MM:SS)')); 
+    xlabel(handles.zPlot_axes, horzcat(d, ' Time (HH:MM:SS)'));
+elseif tdiff < 2
+    datetick(handles.xPlot_axes, 'x','mmm.dd HH:MM', 'keepticks');
+    datetick(handles.yPlot_axes, 'x','mmm.dd HH:MM', 'keepticks');
+    datetick(handles.zPlot_axes, 'x','mmm.dd HH:MM', 'keepticks');
+    xlabel(handles.xPlot_axes, 'Time (Month.Day HH:MM)');
+    xlabel(handles.yPlot_axes, 'Time (Month.Day HH:MM)');  
+    xlabel(handles.zPlot_axes, 'Time (Month.Day HH:MM)');
+else
+    datetick(handles.xPlot_axes, 'x','mmm-dd', 'keepticks');
+    datetick(handles.yPlot_axes, 'x','mmm-dd', 'keepticks');
+    datetick(handles.zPlot_axes, 'x','mmm-dd', 'keepticks');
+    xlabel(handles.xPlot_axes, 'Time (Month-Day)');
+    xlabel(handles.yPlot_axes, 'Time (Month-Day)');  
+    xlabel(handles.zPlot_axes, 'Time (Month-Day)');
+end
 ylabel(handles.xPlot_axes, 'Magnitude (g)');
-xlabel(handles.yPlot_axes, 'Time (HH:MM:SS)');
 ylabel(handles.yPlot_axes, 'Magnitude (g)');
-xlabel(handles.zPlot_axes, 'Time (HH:MM:SS)');
 ylabel(handles.zPlot_axes, 'Magnitude (g)');
 set(handles.xPlot_axes, 'XGrid', 'on');
 set(handles.xPlot_axes, 'YGrid', 'on');
@@ -259,21 +289,23 @@ ClearAxes(handles);
 b = tData(n,:) >= timeF & tData(n,:) <= timeL;
 finder = find(b);
 if isempty(finder)
-    msgbox('No Data Found!', 'No Data', 'error');
+    errordlg('No Data Found!', 'No Data', 'modal');
     return;
 end
 f = finder(1);
 l = finder(end);
-L = length(finder);
+L = 2^nextpow2(length(finder));
+freq = 50*(0:L/2)/L;
 peaksNum = 6;
 %X
-y = xData(n,f:l)/255;
-[psd, fs] = periodogram(y - mean(y), [], [], L);
-fs = 25*fs/fs(end);
+Y = fft((xData(n,f:l) - mean(xData(n,f:l)))/255, L);
+P2 = abs(Y/L);
+P1 = P2(1:int64(L/2 - 0.5) + 1);
+P1(2:end-1) = 2*P1(2:end-1);
 try
-    [pks, locs] = findpeaks(psd, fs, 'SortStr', 'descend');
+    [pks, locs] = findpeaks(P1, freq, 'SortStr', 'descend');
     last = min(peaksNum, length(pks));
-    plot(handles.xPlot_axes, fs, psd, 'r');
+    plot(handles.xPlot_axes, freq, P1, 'r');
     hold(handles.xPlot_axes, 'on')
     for i = 1:last
         text(handles.xPlot_axes, locs(i), pks(i), horzcat('  P', num2str(i)), 'FontSize', 8, 'Clipping', 'on');
@@ -283,16 +315,17 @@ try
     xlim(handles.xPlot_axes, [0 25]);
     ylim(handles.xPlot_axes, [0 1.1*pks(1)]);
 catch
-    msgbox('Too much ''X'' data! Lower the Time Frame!', 'Data overload', 'error');
+    errordlg('Too much ''X'' data! Lower the Time Frame!', 'Data overload', 'modal');
 end
 %Y
-y = yData(n,f:l)/255;
-[psd, fs] = periodogram(y - mean(y), [], [], L);
-fs = 25*fs/fs(end);
+Y = fft((yData(n,f:l) - mean(yData(n,f:l)))/255, L);
+P2 = abs(Y/L);
+P1 = P2(1:int64(L/2 - 0.5) + 1);
+P1(2:end-1) = 2*P1(2:end-1);
 try
-    [pks, locs] = findpeaks(psd, fs, 'SortStr', 'descend');
+    [pks, locs] = findpeaks(P1, freq, 'SortStr', 'descend');
     last = min(peaksNum, length(pks));
-    plot(handles.yPlot_axes, fs, psd, 'g');
+    plot(handles.yPlot_axes, freq, P1, 'g');
     hold(handles.yPlot_axes, 'on')
     for i = 1:last
         text(handles.yPlot_axes, locs(i), pks(i), horzcat('  P', num2str(i)), 'FontSize', 8, 'Clipping', 'on');
@@ -302,16 +335,17 @@ try
     xlim(handles.yPlot_axes, [0 25]);
     ylim(handles.yPlot_axes, [0 1.1*pks(1)]);
 catch
-    msgbox('Too much ''Y'' data! Lower the Time Frame!', 'Data overload', 'error');
+    errordlg('Too much ''Y'' data! Lower the Time Frame!', 'Data overload', 'modal');
 end
 %Z
-y = zData(n,f:l)/255;
-[psd, fs] = periodogram(y - mean(y), [], [], L);
-fs = 25*fs/fs(end);
+Y = fft((zData(n,f:l) - mean(zData(n,f:l)))/255, L);
+P2 = abs(Y/L);
+P1 = P2(1:int64(L/2 - 0.5) + 1);
+P1(2:end-1) = 2*P1(2:end-1);
 try
-    [pks, locs] = findpeaks(psd, fs, 'SortStr', 'descend');
+    [pks, locs] = findpeaks(P1, freq, 'SortStr', 'descend');
     last = min(peaksNum, length(pks));
-    plot(handles.zPlot_axes, fs, psd, 'b');
+    plot(handles.zPlot_axes, freq, P1, 'b');
     hold(handles.zPlot_axes, 'on')
     for i = 1:last
         text(handles.zPlot_axes, locs(i), pks(i), horzcat('  P', num2str(i)), 'FontSize', 8, 'Clipping', 'on');
@@ -321,7 +355,7 @@ try
     xlim(handles.zPlot_axes, [0 25]);
     ylim(handles.zPlot_axes, [0 1.1*pks(1)]);
 catch
-    msgbox('Too much ''Z'' data! Lower the Time Frame!', 'Data overload', 'error');
+    errordlg('Too much ''Z'' data! Lower the Time Frame!', 'Data overload', 'modal');
 end
 
 %-------------------------------------
@@ -332,11 +366,11 @@ set(handles.yPlot_axes, 'YGrid', 'on');
 set(handles.zPlot_axes, 'XGrid', 'on');
 set(handles.zPlot_axes, 'YGrid', 'on');
 xlabel(handles.xPlot_axes, 'Frequency (Hz)');
-ylabel(handles.xPlot_axes, 'Magnitude (g^2)');
+ylabel(handles.xPlot_axes, 'Magnitude (g)');
 xlabel(handles.yPlot_axes, 'Frequency (Hz)');
-ylabel(handles.yPlot_axes, 'Magnitude (g^2)');
+ylabel(handles.yPlot_axes, 'Magnitude (g)');
 xlabel(handles.zPlot_axes, 'Frequency (Hz)');
-ylabel(handles.zPlot_axes, 'Magnitude (g^2)');
+ylabel(handles.zPlot_axes, 'Magnitude (g)');
 drawnow;
 
 %-------------------------------------------------------------------------%
@@ -349,8 +383,9 @@ global zData;
 global channel;
 global gmt;
 global statusDisplay;
+x = 0;
 set(statusDisplay, 'String', 'Downloading...', 'Fontsize', 12);
-wb = waitbar(0, horzcat('Downloading Data for Node ', int2str(n), '(0.00%)'), 'CloseRequestFcn', '');
+wb = waitbar(0, horzcat('Downloading Data for Node ', int2str(n), '(0.00%)'), 'WindowStyle', 'modal');
 
 oldest = zeros(1,15);   %oldest time per channel
 pointer = zeros(1,15);  %points to the current feeds index per channel
@@ -360,14 +395,22 @@ oldestIndex = 1;        %index of oldest time in all channels
 
 ch = 15;
 for i = 1:ch
+    pause(0.01);    % Frees some time to process closed handles.mainFigure
+    if ~ishandle(handles.mainFigure)
+        return;
+    end
     checker = 5;
     while(true)
+        pause(0.01);    % Frees some time to process closed handles.mainFigure
         url = horzcat('http://api.thingspeak.com/channels/', int2str(channel(n,i)), '/feed.json');
         try
             s(i) = webread(url); %#ok<AGROW>
             break;
         catch
             disp(horzcat('Retrying connection to ', url));
+            if ~ishandle(handles.mainFigure)
+                return;
+            end
         end
         checker = checker - 1;
         if checker == 0
@@ -382,7 +425,7 @@ for i = 1:ch
             set(handles.yPlot_axes,'xtick',[],'ytick',[]);
             set(handles.zPlot_axes,'xtick',[],'ytick',[]);
             set(statusDisplay, 'String', 'Connection Timeout', 'Fontsize', 10);
-            msgbox(horzcat('Cannot connect to ThingSpeak Channel: ', int2str(channel(n, i))), 'Connection Timeout', 'error');
+            errordlg(horzcat('Cannot connect to ThingSpeak Channel: ', int2str(channel(n, i))), 'Connection Timeout', 'modal');
             beep;
             x = 0;
             return;
@@ -409,7 +452,7 @@ set(statusDisplay, 'String', 'Processing Data...', 'Fontsize', 10);
 pause(0.1);
 index(n) = 1;
 done = 0;
-wb = waitbar(0, 'Processing Data (0.00%)', 'CloseRequestFcn', '');
+wb = waitbar(0, 'Processing Data (0.00%)', 'WindowStyle', 'modal');
 %calculate total indices
 total = 0;
 for i = 1:ch
@@ -470,6 +513,10 @@ end
 if ishandle(wb)
     delete(wb);
 end
+pause(0.01);    % Frees some time to process closed handles.mainFigure
+if ~ishandle(handles.mainFigure)
+    return;
+end
 set(statusDisplay, 'String', 'Idle', 'Fontsize', 12);
 x = 1;
 return;
@@ -501,7 +548,7 @@ counter = 0;
 tf = false;
 %Check internet connection
 set(statusDisplay, 'String', 'Connecting...', 'Fontsize', 12);
-wb = waitbar(0, 'Connecting to ThingSpeak.com', 'CloseRequestFcn', '');
+wb = waitbar(0, 'Connecting to ThingSpeak.com', 'WindowStyle', 'modal');
 while(~tf && counter < 5)
     try
         url = java.net.InetAddress.getByName('api.thingspeak.com'); %#ok<NASGU>
@@ -526,7 +573,7 @@ if (~tf)
     set(handles.yPlot_axes,'xtick',[],'ytick',[]);
     set(handles.zPlot_axes,'xtick',[],'ytick',[]);
     set(statusDisplay, 'String', 'No Connection', 'Fontsize', 12);
-    msgbox('Cannot connect to ThingSpeak Server', 'Connection Timeout', 'error');
+    errordlg('Cannot connect to ThingSpeak Server', 'Connection Timeout', 'modal');
     beep;
     set(handles.BTN_Connect, 'Visible', 'on');
     return;
@@ -586,7 +633,9 @@ global node;
 global statusDisplay;
 %GUI Handles manipulation
 s = get(statusDisplay, 'String');
-set(statusDisplay, 'String', 'Busy...');
+size = get(statusDisplay, 'FontSize');
+set(statusDisplay, 'String', 'Busy...', 'FontSize', 13);
+pause(0.01);
 set(handles.BTN_TimePlot, 'Visible', 'off');
 set(handles.BTN_FreqPlot, 'Visible', 'on');
 %If the plotting is paused and the plot type is in frequency domain
@@ -594,7 +643,7 @@ if (plotType)
     TimePlot(node, handles);
     plotType = 0;
 end
-set(statusDisplay, 'String', s);
+set(statusDisplay, 'String', s, 'FontSize', size);
 
 % --- Executes on button press in BTN_FreqPlot.
 %-------------------------------------------------------------------------%
@@ -605,7 +654,9 @@ global node;
 global statusDisplay;
 %GUI Handles manipulation
 s = get(statusDisplay, 'String');
-set(statusDisplay, 'String', 'Busy...');
+size = get(statusDisplay, 'FontSize');
+set(statusDisplay, 'String', 'Busy...', 'FontSize', 13);
+pause(0.01);
 set(handles.BTN_TimePlot, 'Visible', 'on');
 set(handles.BTN_FreqPlot, 'Visible', 'off');
 %If the plot type is in time domain
@@ -613,7 +664,7 @@ if (~plotType)
     FreqPlot(node, handles);
     plotType = 1;
 end
-set(statusDisplay, 'String', s);
+set(statusDisplay, 'String', s, 'FontSize', size);
 
 % --- Executes on button press in BTN_Refresh.
 %-------------------------------------------------------------------------%
@@ -759,11 +810,12 @@ else
 end
 FigureEnable(handles, 'off');
 timeConfig.fig = figure(...
-    'Position',[300 500 700 150],...
+    'Position',[300 585 700 150],...
     'MenuBar', 'None',...
     'Numbertitle','Off',...
     'Name','Time Settings',...
     'Resize','off',...
+    'WindowStyle', 'modal',...
     'CloseRequestFcn', {@CloseWindow, handles});
 timeConfig.save = uicontrol(...
     'Style','Push',...
@@ -821,6 +873,7 @@ thingspeakConfig.fig = figure(...
     'Numbertitle','Off',...
     'Name','ThingSpeak Settings',...
     'Resize','off',...
+    'WindowStyle', 'modal',...
     'CloseRequestFcn', {@CloseWindow, handles});
 thingspeakConfig.save = uicontrol(...
     'Style','Push',...
@@ -875,6 +928,7 @@ confirm.fig = figure(...
     'Numbertitle','Off',...
     'Name','Clear Channel Data',...
     'Resize','off',...
+    'WindowStyle', 'modal',...
     'CloseRequestFcn', {@CloseWindow, handles});
 confirm.stc_question = uicontrol(...
     'Style', 'Text',...

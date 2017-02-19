@@ -19,7 +19,7 @@ function varargout = Accelerometer_Monitor(varargin)
 % - Pressing 'Enter' in settings should be equivalent to clicking Save
 % button.
 
-% Last Modified by GUIDE v2.5 12-Feb-2017 02:45:39
+% Last Modified by GUIDE v2.5 19-Feb-2017 22:02:29
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -55,6 +55,7 @@ global timeF;
 global timeL;
 global channel;
 global gmt;
+global threshold;
 global statusDisplay;
 global nodeDisplay;
 
@@ -101,7 +102,14 @@ try
 catch
     gmt = 0;
 end
-
+try
+    load('Configuration.mat', 'threshold')
+    if isempty(threshold)
+        threshold = zeros(3, 3);
+    end
+catch
+    threshold = zeros(3, 3);
+end
 %GUI Handles Initial Properties
 set(handles.xPlot_axes,'xtick',[],'ytick',[]);
 set(handles.yPlot_axes,'xtick',[],'ytick',[]);
@@ -284,6 +292,7 @@ global tData;
 global xData;
 global yData;
 global zData;
+global threshold;
 ClearAxes(handles);
 %Time plot  
 b = tData(n,:) >= timeF & tData(n,:) <= timeL;
@@ -307,13 +316,14 @@ try
     last = min(peaksNum, length(pks));
     plot(handles.xPlot_axes, freq, P1, 'r');
     hold(handles.xPlot_axes, 'on')
+    plot(handles.xPlot_axes, [0 25], [threshold(n, 1) threshold(n, 1)], 'k--', 'LineWidth', 1.5);
     for i = 1:last
         text(handles.xPlot_axes, locs(i), pks(i), horzcat('  P', num2str(i)), 'FontSize', 8, 'Clipping', 'on');
         plot(handles.xPlot_axes, locs(i), pks(i), '*');
     end
     hold(handles.xPlot_axes, 'off')
     xlim(handles.xPlot_axes, [0 25]);
-    ylim(handles.xPlot_axes, [0 1.1*pks(1)]);
+    ylim(handles.xPlot_axes, [0 max(1.1*threshold(n, 1),1.1*pks(1))]);
 catch
     errordlg('Too much ''X'' data! Lower the Time Frame!', 'Data overload', 'modal');
 end
@@ -327,13 +337,14 @@ try
     last = min(peaksNum, length(pks));
     plot(handles.yPlot_axes, freq, P1, 'g');
     hold(handles.yPlot_axes, 'on')
+    plot(handles.yPlot_axes, [0 25], [threshold(n, 2) threshold(n, 2)], 'k--', 'LineWidth', 1.5);
     for i = 1:last
         text(handles.yPlot_axes, locs(i), pks(i), horzcat('  P', num2str(i)), 'FontSize', 8, 'Clipping', 'on');
         plot(handles.yPlot_axes, locs(i), pks(i), '*');
     end
     hold(handles.yPlot_axes, 'off')
     xlim(handles.yPlot_axes, [0 25]);
-    ylim(handles.yPlot_axes, [0 1.1*pks(1)]);
+    ylim(handles.yPlot_axes, [0 max(1.1*threshold(n, 2),1.1*pks(1))]);
 catch
     errordlg('Too much ''Y'' data! Lower the Time Frame!', 'Data overload', 'modal');
 end
@@ -347,13 +358,14 @@ try
     last = min(peaksNum, length(pks));
     plot(handles.zPlot_axes, freq, P1, 'b');
     hold(handles.zPlot_axes, 'on')
+    plot(handles.zPlot_axes, [0 25], [threshold(n, 3) threshold(n, 3)], 'k--', 'LineWidth', 1.5);
     for i = 1:last
         text(handles.zPlot_axes, locs(i), pks(i), horzcat('  P', num2str(i)), 'FontSize', 8, 'Clipping', 'on');
         plot(handles.zPlot_axes, locs(i), pks(i), '*');
     end
     hold(handles.zPlot_axes, 'off')
     xlim(handles.zPlot_axes, [0 25]);
-    ylim(handles.zPlot_axes, [0 1.1*pks(1)]);
+    ylim(handles.zPlot_axes, [0 max(1.1*threshold(n, 3),1.1*pks(1))]);
 catch
     errordlg('Too much ''Z'' data! Lower the Time Frame!', 'Data overload', 'modal');
 end
@@ -706,6 +718,7 @@ global timeF;
 global timeL;
 global gmt;
 global channel; %#ok<NUSED>
+global threshold; %#ok<NUSED>
 timeF = datenum(get(timeConfig.in_from, 'String'));
 timeL = datenum(get(timeConfig.in_to, 'String'));
 gmt = str2double(get(timeConfig.in_gmt, 'String'));
@@ -713,6 +726,7 @@ save('Configuration.mat', 'timeF');
 save('Configuration.mat', 'timeL', '-append');
 save('Configuration.mat', 'gmt', '-append');
 save('Configuration.mat', 'channel', '-append');
+save('Configuration.mat', 'threshold', '-append');
 RefreshPlot(handles);
 close(timeConfig.fig);
 
@@ -724,6 +738,7 @@ global timeF; %#ok<NUSED>
 global timeL; %#ok<NUSED>
 global gmt; %#ok<NUSED>
 global channel;
+global threshold; %#ok<NUSED>
 for n = 1:3
     for i = 1:15
         channel(n,i) = str2double(get(thingspeakConfig.ch(n,i), 'String'));
@@ -733,6 +748,7 @@ save('Configuration.mat', 'timeF');
 save('Configuration.mat', 'timeL', '-append');
 save('Configuration.mat', 'gmt', '-append');
 save('Configuration.mat', 'channel', '-append');
+save('Configuration.mat', 'threshold', '-append');
 RefreshPlot(handles);
 close(thingspeakConfig.fig);
 
@@ -947,3 +963,65 @@ confirm.no = uicontrol(...
     'Fontsize',12,...
     'String','No',...
     'Callback', {@ClearChannels, false});
+
+
+function SaveThresholdConfig(srt, evt, handles) %#ok<INUSD>
+global thresholdConfig;
+global timeF; %#ok<NUSED>
+global timeL; %#ok<NUSED>
+global gmt; %#ok<NUSED>
+global channel; %#ok<NUSED>
+global threshold;
+for n = 1:3
+    for i = 1:3
+        threshold(n,i) = str2double(get(thresholdConfig.value(n,i), 'String'));
+    end
+end
+save('Configuration.mat', 'timeF');
+save('Configuration.mat', 'timeL', '-append');
+save('Configuration.mat', 'gmt', '-append');
+save('Configuration.mat', 'channel', '-append');
+save('Configuration.mat', 'threshold', '-append');
+close(thresholdConfig.fig);
+
+%-------------------------------------------------------------------------%
+function TBB_Threshold_ClickedCallback(hObject, eventdata, handles) %#ok<INUSL,DEFNU>
+%-------------------------------------------------------------------------%
+global thresholdConfig;
+global threshold;
+FigureEnable(handles, 'off');
+label = ['X' 'Y' 'Z'];
+thresholdConfig.fig = figure(...
+    'Position',[300 485 700 250],...
+    'MenuBar', 'None',...
+    'Numbertitle','Off',...
+    'Name','Threshold Settings',...
+    'Resize','off',...
+    'WindowStyle', 'modal',...
+    'CloseRequestFcn', {@CloseWindow, handles});
+thresholdConfig.save = uicontrol(...
+    'Style','Push',...
+    'Position',[15 15 670 40],...
+    'Fontsize',12,...
+    'String','Save',...
+    'Callback',{@SaveThresholdConfig, handles});
+for n = 1:3
+    thresholdConfig.panel_node(n) = uipanel(...
+        'Title', horzcat('Node ', num2str(n), ' Thresholds'),...
+        'Units', 'Pixels',...;
+        'FontSize', 14,...
+        'TitlePosition', 'centertop',...
+        'Position', [(10 + 230*(n-1)) 70 225 180]);
+    for i = 1:3
+        thresholdConfig.stc_axis(n,i) = uicontrol(...
+            'Style', 'Text',...
+            'Position', [(50 + 230*(n-1)) (195 - 35*i) 30 30],...
+            'Fontsize', 12,...
+            'String', label(i));
+        thresholdConfig.value(n,i) = uicontrol(...
+            'Style', 'Edit',...
+            'Position', [(100 + 230*(n-1)) (200 - 35*i) 100 30],...
+            'Fontsize', 12,...
+            'String', num2str(threshold(n,i)));
+    end
+end
